@@ -168,12 +168,50 @@ test("rejects text target without text and id target without viewId", () => {
   assert.ok(issuePaths(r2).includes("goals.0.actions.0.target.viewId"));
 });
 
-test("rejects constraints missing enabled", () => {
+test("accepts constraints missing enabled (defaults live in schema/App)", () => {
   const result = ReactiveSkillSchema.safeParse(
     mutate((s) => delete s.goals[0].constraints.enabled)
   );
+  assert.ok(result.success, JSON.stringify(result.error?.issues));
+});
+
+test("accepts skill without termination (defaults to allGoalsDone on device)", () => {
+  const result = ReactiveSkillSchema.safeParse(
+    mutate((s) => delete s.termination)
+  );
+  assert.ok(result.success, JSON.stringify(result.error?.issues));
+});
+
+test("accepts top-level launchApp", () => {
+  const result = ReactiveSkillSchema.safeParse(
+    mutate((s) => {
+      s.launchApp = { type: "launchApp", packageName: "com.example.app" };
+    })
+  );
+  assert.ok(result.success, JSON.stringify(result.error?.issues));
+});
+
+test("accepts storeValue with screen source", () => {
+  const result = ReactiveSkillSchema.safeParse(
+    mutate(
+      (s) =>
+        (s.goals[0].actions = [
+          {
+            type: "storeValue",
+            source: { type: "screen", target: { type: "text", text: "Hi" } },
+            variableName: "t",
+          },
+        ])
+    )
+  );
+  assert.ok(result.success, JSON.stringify(result.error?.issues));
+});
+
+test("rejects storeValue screen source without target", () => {
+  const result = ReactiveSkillSchema.safeParse(
+    mutate((s) => (s.goals[0].actions = [{ type: "storeValue", source: { type: "screen" } }]))
+  );
   assert.equal(result.success, false);
-  assert.ok(issuePaths(result).includes("goals.0.constraints.enabled"));
 });
 
 test("rejects timeout termination without maxDurationMs", () => {

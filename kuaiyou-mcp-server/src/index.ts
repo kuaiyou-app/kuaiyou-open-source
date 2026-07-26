@@ -12,14 +12,16 @@ import * as os from "os";
 import * as path from "path";
 import * as dotenv from "dotenv";
 import crypto from "crypto";
-import { ReactiveSkillSchema } from "./reactive-skill-schema.js";
+import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
 import {
   runAdb,
   captureScreencap,
   httpGetText,
   httpGetBuffer,
+  httpPostJson,
   httpPostForm,
   withDeviceLock,
+  sniffImageMime,
 } from "./device.js";
 
 dotenv.config();
@@ -41,25 +43,39 @@ const server = new Server(
   }
 );
 
-// Helper for IP
 const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
 const getDeviceBaseUrl = (ip: string) => {
   return /:\d+$/.test(ip) ? `http://${ip}` : `http://${ip}:8080`;
 };
-const getPackageName = () => process.env.KUAIYOU_PACKAGE_NAME || "com.kuaiyou.automator.clicker";
+
+function toolNotImplemented(name: string, hint: string) {
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `${name} is not available yet on this App build.\n` +
+          `${hint}\n` +
+          `Ensure LAN MCP service is enabled and the device App exposes the matching /api/mcp/* route.`,
+      },
+    ],
+    isError: true,
+  };
+}
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
         name: "validate_kuaiyou_skill",
-        description: "Validate a JSON string or file path against the Kuaiyou ReactiveSkill schema.",
+        description:
+          "Validate a JSON string or .json file path against the Kuaiyou ReactiveSkill schema (Zod + business lint).",
         inputSchema: {
           type: "object",
           properties: {
             skillJson: {
               type: "string",
-              description: "The JSON content or absolute file path to the JSON file to validate.",
+              description: "The JSON content or absolute .json file path to validate.",
             },
           },
           required: ["skillJson"],
@@ -67,7 +83,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "push_reactive_skill",
-        description: "Deploy a ReactiveSkill JSON to a connected Android device via HTTP LAN direct connection (fallback to ADB).",
+        description:
+          "Validate then deploy a ReactiveSkill JSON to a connected Android device via HTTP LAN (fallback to ADB public Download path).",
         inputSchema: {
           type: "object",
           properties: {
@@ -85,7 +102,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_ui_tree",
-        description: "Fetch the current UI node tree from the connected Android device via HTTP (fallback to ADB uiautomator).",
+        description:
+          "Fetch the current UI node tree from the connected Android device via HTTP (fallback to ADB uiautomator with hierarchy).",
         inputSchema: {
           type: "object",
           properties: {},
@@ -93,12 +111,73 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "capture_screenshot",
-        description: "Fetch the current screen screenshot from the connected Android device via HTTP (fallback to ADB screencap).",
+        description:
+          "Fetch the current screen screenshot from the connected Android device via HTTP (fallback to ADB screencap).",
         inputSchema: {
           type: "object",
           properties: {},
         },
-      }
+      },
+      {
+        name: "list_skills",
+        description: "List skills installed on the device (requires App /api/mcp/skills).",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "delete_skill",
+        description: "Delete a skill by id on the device (requires App /api/mcp/skills DELETE).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            skillId: { type: "string", description: "Skill id to delete." },
+          },
+          required: ["skillId"],
+        },
+      },
+      {
+        name: "run_skill",
+        description: "Start executing a skill on the device (requires App /api/mcp/run).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            skillId: { type: "string" },
+          },
+          required: ["skillId"],
+        },
+      },
+      {
+        name: "stop_skill",
+        description: "Stop the currently running skill (requires App /api/mcp/stop).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            skillId: { type: "string", description: "Optional skill id hint." },
+          },
+        },
+      },
+      {
+        name: "get_skill_status",
+        description: "Get execution status for a skill (requires App /api/mcp/status).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            skillId: { type: "string" },
+          },
+          required: ["skillId"],
+        },
+      },
+      {
+        name: "get_execution_log",
+        description: "Fetch recent execution logs for a skill (requires App /api/mcp/logs).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            skillId: { type: "string" },
+            limit: { type: "number", description: "Max log lines (default 100)." },
+          },
+          required: ["skillId"],
+        },
+      },
     ],
   };
 });
@@ -118,7 +197,7 @@ function parseBoundsStr(boundsStr: string) {
       width: right - left,
       height: bottom - top,
       centerX: Math.floor((left + right) / 2),
-      centerY: Math.floor((top + bottom) / 2)
+      centerY: Math.floor((top + bottom) / 2),
     };
   }
   return boundsStr;
@@ -127,10 +206,10 @@ function parseBoundsStr(boundsStr: string) {
 function enhanceUiNodes(data: any): any {
   if (Array.isArray(data)) {
     return data.map(enhanceUiNodes);
-  } else if (data !== null && typeof data === 'object') {
+  } else if (data !== null && typeof data === "object") {
     const newData: any = {};
     for (const key in data) {
-      if (key === 'bounds' && typeof data[key] === 'string') {
+      if (key === "bounds" && typeof data[key] === "string") {
         newData[key] = parseBoundsStr(data[key]);
       } else {
         newData[key] = enhanceUiNodes(data[key]);
@@ -141,6 +220,110 @@ function enhanceUiNodes(data: any): any {
   return data;
 }
 
+function xmlNodeToTree(node: any): any {
+  if (!node) return null;
+  if (Array.isArray(node)) {
+    return node.map(xmlNodeToTree).filter(Boolean);
+  }
+
+  const childrenRaw = node.node;
+  const children = childrenRaw ? xmlNodeToTree(childrenRaw) : undefined;
+  const childList = children === undefined ? undefined : Array.isArray(children) ? children : [children];
+
+  const info: any = {};
+  if (node["@_class"]) info.class = node["@_class"];
+  if (node["@_text"]) info.text = node["@_text"];
+  if (node["@_content-desc"]) info["content-desc"] = node["@_content-desc"];
+  if (node["@_resource-id"]) {
+    info["resource-id"] = node["@_resource-id"];
+    info.viewId = node["@_resource-id"];
+  }
+  if (node["@_package"]) info.package = node["@_package"];
+  if (node["@_bounds"]) {
+    info.bounds =
+      typeof node["@_bounds"] === "string" ? parseBoundsStr(node["@_bounds"]) : node["@_bounds"];
+  }
+  if (node["@_clickable"] !== undefined) info.clickable = node["@_clickable"] === "true";
+  if (node["@_scrollable"] !== undefined) info.scrollable = node["@_scrollable"] === "true";
+  if (node["@_enabled"] !== undefined) info.enabled = node["@_enabled"] === "true";
+  if (node["@_checked"] !== undefined) info.checked = node["@_checked"] === "true";
+  if (childList && childList.length > 0) info.children = childList;
+
+  const interesting =
+    info.clickable ||
+    info.text ||
+    info["content-desc"] ||
+    info.viewId ||
+    info.scrollable ||
+    (childList && childList.length > 0);
+  if (!interesting) {
+    return childList && childList.length === 1 ? childList[0] : childList && childList.length > 1 ? { children: childList } : null;
+  }
+  return info;
+}
+
+async function resolveSkillJsonInput(skillJson: string): Promise<string> {
+  // Only treat as a file path when it looks like one and ends with .json.
+  const looksLikePath =
+    skillJson.endsWith(".json") &&
+    (skillJson.startsWith("/") ||
+      skillJson.startsWith("./") ||
+      skillJson.startsWith("../") ||
+      /^[A-Za-z]:[\\/]/.test(skillJson));
+  if (!looksLikePath) return skillJson;
+
+  try {
+    const stat = await fs.stat(skillJson);
+    if (!stat.isFile()) {
+      throw new McpError(ErrorCode.InvalidParams, `skillJson path is not a file: ${skillJson}`);
+    }
+    if (!skillJson.toLowerCase().endsWith(".json")) {
+      throw new McpError(ErrorCode.InvalidParams, "File path skillJson must end with .json");
+    }
+    return await fs.readFile(skillJson, "utf8");
+  } catch (e: any) {
+    if (e instanceof McpError) throw e;
+    // Path-looking string that does not exist: fall through as JSON body.
+    return skillJson;
+  }
+}
+
+async function deviceApiGet(pathname: string): Promise<{ ok: true; text: string } | { ok: false; logs: string }> {
+  const ip = getDeviceIp();
+  let logs = "";
+  if (!ip) {
+    return { ok: false, logs: "KUAIYOU_DEVICE_IP is not set.\n" };
+  }
+  const baseUrl = getDeviceBaseUrl(ip);
+  logs += `GET ${baseUrl}${pathname}\n`;
+  try {
+    const text = await httpGetText(`${baseUrl}${pathname}`);
+    return { ok: true, text };
+  } catch (e: any) {
+    logs += `HTTP failed: ${e.message}\n`;
+    return { ok: false, logs };
+  }
+}
+
+async function deviceApiPost(pathname: string, body: object): Promise<{ ok: boolean; status: number; body: string; logs: string }> {
+  const ip = getDeviceIp();
+  let logs = "";
+  if (!ip) {
+    return { ok: false, status: 0, body: "", logs: "KUAIYOU_DEVICE_IP is not set.\n" };
+  }
+  const baseUrl = getDeviceBaseUrl(ip);
+  logs += `POST ${baseUrl}${pathname}\n`;
+  try {
+    const response = await httpPostJson(`${baseUrl}${pathname}`, JSON.stringify(body));
+    logs += `HTTP ${response.status} ${response.statusText}\n`;
+    if (response.body) logs += `Body: ${response.body.slice(0, 2000)}\n`;
+    return { ok: response.ok, status: response.status, body: response.body, logs };
+  } catch (e: any) {
+    logs += `HTTP failed: ${e.message}\n`;
+    return { ok: false, status: 0, body: "", logs };
+  }
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "validate_kuaiyou_skill": {
@@ -149,54 +332,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new McpError(ErrorCode.InvalidParams, "skillJson is required");
       }
 
-      let content = skillJson;
-      try {
-        const stat = await fs.stat(skillJson);
-        if (stat.isFile()) {
-          content = await fs.readFile(skillJson, "utf8");
-        }
-      } catch (e) {
-        // Assume it's a JSON string if file stat fails
-      }
-
-      try {
-        const parsed = JSON.parse(content);
-
-        // 强拦截 askAgent：遍历所有 actions
-        let hasAskAgent = false;
-        const checkAction = (obj: any) => {
-          if (!obj || typeof obj !== "object") return;
-          if (obj.type === "askAgent") hasAskAgent = true;
-          Object.values(obj).forEach(checkAction);
-        };
-        checkAction(parsed);
-
-        if (hasAskAgent) {
-           return {
-             content: [{ type: "text", text: "Validation failed: 'askAgent' action is strictly prohibited and not supported for local execution." }],
-             isError: true,
-           };
-        }
-
-        const result = ReactiveSkillSchema.safeParse(parsed);
-        
-        if (!result.success) {
-          const errors = result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`);
-          return {
-            content: [{ type: "text", text: "Validation failed with errors:\n" + errors.join("\n") }],
-            isError: true,
-          };
-        }
-
-        return {
-          content: [{ type: "text", text: "Validation successful! The JSON is a valid Kuaiyou ReactiveSkill." }],
-        };
-      } catch (e: any) {
-        return {
-          content: [{ type: "text", text: `Invalid JSON format: ${e.message}` }],
-          isError: true,
-        };
-      }
+      const content = await resolveSkillJsonInput(skillJson);
+      const result = validateSkillPayload(content);
+      return {
+        content: [{ type: "text", text: formatLintResult(result) }],
+        isError: !result.ok,
+      };
     }
 
     case "push_reactive_skill": {
@@ -211,46 +352,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      let processedJson = skillJson;
-      try {
-        const obj = JSON.parse(skillJson);
-        if (typeof obj === "object" && obj !== null) {
-          // 在架构方案 A 下，外部完全不知道 agentId 的存在，
-          // 这里不再向客户端下发 agentId，由客户端在网关层自己兜底赋值为 ""
-          delete obj.agentId; 
-          processedJson = JSON.stringify(obj, null, 2);
-        }
-      } catch (e) {
-        // Ignore parse error, let the server handle invalid JSON
+      const lint = validateSkillPayload(skillJson);
+      if (!lint.ok) {
+        return {
+          content: [{ type: "text", text: `Refusing to deploy — ${formatLintResult(lint)}` }],
+          isError: true,
+        };
       }
+
+      let processedObj: any =
+        lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(skillJson);
+      delete processedObj.agentId;
+      const processedJson = JSON.stringify(processedObj, null, 2);
 
       const ip = getDeviceIp();
       let logs = "";
+      if (lint.warnings.length > 0) {
+        logs += `Warnings:\n${lint.warnings.map((w) => `- ${w}`).join("\n")}\n\n`;
+      }
 
       if (ip) {
         const baseUrl = getDeviceBaseUrl(ip);
         logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
         try {
-          const formData = new URLSearchParams();
-          formData.append("postData", processedJson);
-
-          const response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
+          let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
+          // Backward-compatible fallback for older App builds that still expect form posts.
+          if (response.status === 415 || response.status === 400) {
+            const formData = new URLSearchParams();
+            formData.append("postData", processedJson);
+            response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
+          }
 
           if (response.ok) {
             logs += `HTTP push successful!\n`;
+            if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
             return {
               content: [{ type: "text", text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
             };
           } else {
             logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
+            if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
           }
         } catch (e: any) {
           logs += `HTTP push failed: ${e.message}\n`;
         }
       }
 
-      // Fallback to ADB. Serialize device-mutating work so concurrent pushes
-      // don't interleave against the same device.
       logs += `\nFalling back to ADB...\n`;
       return withDeviceLock(async () => {
         let tempDir: string | undefined;
@@ -259,7 +406,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
           await fs.writeFile(tempPath, processedJson, "utf8");
 
+          // Prefer app-specific external files (readable by the app under scoped storage).
+          // /sdcard/Download/kuaiyou is NOT reliably readable by the app on Android 11+.
           const packageName = getPackageName();
+          await runAdb(["shell", "mkdir", "-p", `/sdcard/Android/data/${packageName}/files`]);
           const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
 
           const { stdout: pushOut, stderr: pushErr } = await runAdb(["push", tempPath, targetPath]);
@@ -268,19 +418,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const { stdout: chmodOut, stderr: chmodErr } = await runAdb(["shell", "chmod", "666", targetPath]);
           logs += `[ADB CHMOD]\n${chmodOut}\n${chmodErr}\n`;
 
-          const deepLink = `kuaiyou://import_skill?path=${targetPath}`;
+          const deepLink = `kuaiyou://import_skill?path=${encodeURIComponent(targetPath)}`;
           const { stdout: amOut, stderr: amErr } = await runAdb([
-            "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deepLink,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            "android.intent.action.VIEW",
+            "-d",
+            deepLink,
           ]);
           logs += `[ADB AM START]\n${amOut}\n${amErr}\n`;
 
           return {
-            content: [{ type: "text", text: `Successfully deployed skill ${skillId} to device via ADB!\n\nLogs:\n${logs}` }],
+            content: [
+              {
+                type: "text",
+                text: `Successfully deployed skill ${skillId} to device via ADB!\n\nLogs:\n${logs}`,
+              },
+            ],
           };
         } catch (e: any) {
           logs += `ADB deploy failed: ${e.message}\n`;
           return {
-            content: [{ type: "text", text: `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
+            content: [
+              {
+                type: "text",
+                text:
+                  `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
+              },
+            ],
             isError: true,
           };
         } finally {
@@ -316,77 +483,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      // Fallback to ADB
       logs += `\nFalling back to ADB uiautomator dump...\n`;
       const dumpFilename = `window_dump_${crypto.randomUUID()}.xml`;
       const devicePath = `/sdcard/${dumpFilename}`;
       const tempPath = path.join(os.tmpdir(), dumpFilename);
 
-      try {
-        // Run dump
-        await runAdb(["shell", "uiautomator", "dump", devicePath]);
-
-        // Pull dump
-        await runAdb(["pull", devicePath, tempPath]);
-
-        const xmlData = await fs.readFile(tempPath, "utf8");
-
-        const parser = new XMLParser({
-          ignoreAttributes: false,
-          attributeNamePrefix: "@_"
-        });
-        const jsonObj = parser.parse(xmlData);
-        
-        const nodes: any[] = [];
-
-        function traverse(node: any) {
-          if (!node) return;
-          
-          if (Array.isArray(node)) {
-            node.forEach(traverse);
-            return;
-          }
-
-          if (node["@_clickable"] === "true" || node["@_text"] || node["@_content-desc"]) {
-            const nodeInfo: any = {};
-            if (node["@_class"]) nodeInfo.class = node["@_class"];
-            if (node["@_text"]) nodeInfo.text = node["@_text"];
-            if (node["@_content-desc"]) nodeInfo["content-desc"] = node["@_content-desc"];
-            if (node["@_bounds"]) nodeInfo.bounds = node["@_bounds"];
-            if (node["@_clickable"]) nodeInfo.clickable = node["@_clickable"] === "true";
-            
-            // Only add nodes that have actual geometry or text
-            if (Object.keys(nodeInfo).length > 0 && nodeInfo.bounds) {
-              if (typeof nodeInfo.bounds === 'string') {
-                nodeInfo.bounds = parseBoundsStr(nodeInfo.bounds);
-              }
-              nodes.push(nodeInfo);
+      return withDeviceLock(async () => {
+        try {
+          let lastErr: any;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              await runAdb(["shell", "uiautomator", "dump", devicePath]);
+              lastErr = null;
+              break;
+            } catch (e) {
+              lastErr = e;
+              await new Promise((r) => setTimeout(r, 400));
             }
           }
+          if (lastErr) throw lastErr;
 
-          if (node.node) {
-            traverse(node.node);
-          }
+          await runAdb(["pull", devicePath, tempPath]);
+          const xmlData = await fs.readFile(tempPath, "utf8");
+
+          const parser = new XMLParser({
+            ignoreAttributes: false,
+            attributeNamePrefix: "@_",
+          });
+          const jsonObj = parser.parse(xmlData);
+          const tree = jsonObj.hierarchy ? xmlNodeToTree(jsonObj.hierarchy) : null;
+
+          return {
+            content: [{ type: "text", text: JSON.stringify(tree, null, 2) }],
+          };
+        } catch (e: any) {
+          logs += `ADB fetch failed: ${e.message}\n`;
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Failed to fetch screen nodes.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
+              },
+            ],
+            isError: true,
+          };
+        } finally {
+          await runAdb(["shell", "rm", devicePath]).catch(() => {});
+          await fs.unlink(tempPath).catch(() => {});
         }
-
-        if (jsonObj.hierarchy) {
-          traverse(jsonObj.hierarchy);
-        }
-
-        return {
-          content: [{ type: "text", text: JSON.stringify(nodes, null, 2) }],
-        };
-      } catch (e: any) {
-        logs += `ADB fetch failed: ${e.message}\n`;
-        return {
-          content: [{ type: "text", text: `Failed to fetch screen nodes.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
-          isError: true,
-        };
-      } finally {
-        // Clean up device-side and local temp files on both success and failure.
-        await runAdb(["shell", "rm", devicePath]).catch(() => {});
-        await fs.unlink(tempPath).catch(() => {});
-      }
+      });
     }
 
     case "capture_screenshot": {
@@ -398,14 +544,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
         try {
           const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
-          const base64 = buffer.toString('base64');
+          const base64 = buffer.toString("base64");
           return {
             content: [
               {
                 type: "image",
                 data: base64,
-                mimeType: "image/jpeg"
-              }
+                mimeType: sniffImageMime(buffer),
+              },
             ],
           };
         } catch (e: any) {
@@ -413,27 +559,107 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      // Fallback to ADB screencap
       logs += `\nFalling back to ADB screencap...\n`;
       try {
         const buffer = await captureScreencap();
-        const base64 = buffer.toString('base64');
+        const base64 = buffer.toString("base64");
         return {
           content: [
             {
               type: "image",
               data: base64,
-              mimeType: "image/png"
-            }
+              mimeType: sniffImageMime(buffer),
+            },
           ],
         };
       } catch (e: any) {
         logs += `ADB screencap failed: ${e.message}\n`;
         return {
-          content: [{ type: "text", text: `Failed to capture screenshot.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
+          content: [
+            {
+              type: "text",
+              text:
+                `Failed to capture screenshot.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
+            },
+          ],
           isError: true,
         };
       }
+    }
+
+    case "list_skills": {
+      const res = await deviceApiGet("/api/mcp/skills");
+      if (!res.ok) {
+        return toolNotImplemented("list_skills", res.logs);
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "delete_skill": {
+      const { skillId } = request.params.arguments as any;
+      if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
+        throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
+      }
+      const res = await deviceApiPost("/api/mcp/skills/delete", { skillId });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `delete_skill failed.\n${res.logs}${res.body}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: res.body || `Deleted ${skillId}` }] };
+    }
+
+    case "run_skill": {
+      const { skillId } = request.params.arguments as any;
+      if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
+        throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
+      }
+      const res = await deviceApiPost("/api/mcp/run", { skillId });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `run_skill failed.\n${res.logs}${res.body}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
+    }
+
+    case "stop_skill": {
+      const { skillId } = (request.params.arguments as any) || {};
+      const res = await deviceApiPost("/api/mcp/stop", skillId ? { skillId } : {});
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `stop_skill failed.\n${res.logs}${res.body}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: res.body || "Stop requested" }] };
+    }
+
+    case "get_skill_status": {
+      const { skillId } = request.params.arguments as any;
+      if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
+        throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
+      }
+      const res = await deviceApiGet(`/api/mcp/status?skillId=${encodeURIComponent(skillId)}`);
+      if (!res.ok) {
+        return toolNotImplemented("get_skill_status", res.logs);
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "get_execution_log": {
+      const { skillId, limit } = request.params.arguments as any;
+      if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
+        throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
+      }
+      const q = new URLSearchParams({ skillId, limit: String(limit ?? 100) });
+      const res = await deviceApiGet(`/api/mcp/logs?${q.toString()}`);
+      if (!res.ok) {
+        return toolNotImplemented("get_execution_log", res.logs);
+      }
+      return { content: [{ type: "text", text: res.text }] };
     }
 
     default:

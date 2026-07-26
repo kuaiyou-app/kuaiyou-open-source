@@ -26,15 +26,23 @@ after(async () => {
   await client?.close();
 });
 
-test("tools/list exposes the four expected tools", async () => {
+test("tools/list exposes core and debug tools", async () => {
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, [
+  for (const required of [
     "capture_screenshot",
     "get_ui_tree",
     "push_reactive_skill",
     "validate_kuaiyou_skill",
-  ]);
+    "list_skills",
+    "run_skill",
+    "stop_skill",
+    "get_skill_status",
+    "get_execution_log",
+    "delete_skill",
+  ]) {
+    assert.ok(names.includes(required), `missing tool ${required}`);
+  }
 });
 
 test("validate_kuaiyou_skill accepts a valid skill", async () => {
@@ -119,6 +127,29 @@ test("push_reactive_skill rejects missing arguments", async () => {
     }),
     /required/
   );
+});
+
+test("push_reactive_skill rejects forbidden action before deploy", async () => {
+  const skillJson = JSON.stringify({
+    id: "bad",
+    name: "Bad",
+    description: "d",
+    goals: [
+      {
+        id: "g1",
+        name: "g",
+        trigger: { type: "immediate" },
+        action: { type: "readText", target: { type: "text", text: "x" }, variableName: "v" },
+      },
+    ],
+  });
+  const res = await client.callTool({
+    name: "push_reactive_skill",
+    arguments: { skillId: "bad", skillJson },
+  });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /readText/);
+  assert.match(res.content[0].text, /Refusing to deploy/);
 });
 
 test("unknown tool returns a method-not-found error", async () => {

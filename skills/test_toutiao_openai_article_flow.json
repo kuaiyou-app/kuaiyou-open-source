@@ -361,11 +361,14 @@
       },
       "actions": [
         {
-          "type": "readText",
-          "target": {
-            "type": "text",
-            "text": "OpenAI",
-            "exact": false
+          "type": "storeValue",
+          "source": {
+            "type": "screen",
+            "target": {
+              "type": "text",
+              "text": "OpenAI",
+              "exact": false
+            }
           },
           "variableName": "article_title",
           "delayMs": 300,

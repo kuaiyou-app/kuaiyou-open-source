@@ -31,8 +31,10 @@ test("withDeviceLock keeps the chain alive after a rejected task", async () => {
   assert.equal(ok, "recovered");
 });
 
-test("TimeoutError is exported and named", () => {
-  const err = new TimeoutError("x");
-  assert.equal(err.name, "TimeoutError");
-  assert.ok(err instanceof Error);
+test("sniffImageMime detects png and jpeg", () => {
+  const { sniffImageMime } = require("../build/device.js");
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  assert.equal(sniffImageMime(png), "image/png");
+  assert.equal(sniffImageMime(jpeg), "image/jpeg");
 });

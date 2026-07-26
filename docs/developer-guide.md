@@ -8,6 +8,8 @@
 
 ### 1.1 移除的废弃字段与动作
 - **`agentId`**：在 V2 的 `schema.json` 中已全面剔除，您生成的 JSON 不再需要携带此字段。
+- **`readText` / `setClipboard`**：已移除；请使用 `storeValue`（`source.type=screen|template`）。
+- **校验**：以手写 [`schema.json`](../schema.json) 与 MCP Zod/lint 为准，详见 [reactive-skill-api-reference.md](./reactive-skill-api-reference.md)。
 - **`askAgent`**：执行期挂起外联大模型的动作已被双端严格拦截。所有的控制逻辑均需在本地（通过 `tap`, `swipe`, `launchApp`, `delay` 等动作）完成闭环，以保障执行性能与数据安全。
 
 ## 2. 编写规范的脚本 (基于 Schema)

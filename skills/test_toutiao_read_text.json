@@ -8,7 +8,9 @@
       "id": "launch_toutiao",
       "name": "启动头条",
       "priority": 10,
-      "trigger": { "type": "immediate" },
+      "trigger": {
+        "type": "immediate"
+      },
       "actions": [
         {
           "type": "launchApp",
@@ -18,7 +20,12 @@
           "timeoutMs": 8000
         }
       ],
-      "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
     },
     {
       "id": "normalize_home",
@@ -33,19 +40,37 @@
           "type": "conditionBranch",
           "condition": {
             "type": "elementVisible",
-            "target": { "type": "desc", "desc": "听一听开关" }
+            "target": {
+              "type": "desc",
+              "desc": "听一听开关"
+            }
           },
           "onTrue": [
-            { "type": "delay", "durationMs": 400 }
+            {
+              "type": "delay",
+              "durationMs": 400
+            }
           ],
           "onFalse": [
-            { "type": "systemAction", "systemType": "BACK", "delayMs": 300 },
-            { "type": "delay", "durationMs": 1200 }
+            {
+              "type": "systemAction",
+              "systemType": "BACK",
+              "delayMs": 300
+            },
+            {
+              "type": "delay",
+              "durationMs": 1200
+            }
           ],
           "timeoutMs": 1200
         }
       ],
-      "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
     },
     {
       "id": "open_search",
@@ -54,18 +79,35 @@
       "trigger": {
         "type": "allOf",
         "triggers": [
-          { "type": "afterGoal", "goalId": "normalize_home" },
-          { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" } }
+          {
+            "type": "afterGoal",
+            "goalId": "normalize_home"
+          },
+          {
+            "type": "elementVisible",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/ki9"
+            }
+          }
         ]
       },
       "actions": [
         {
           "type": "tap",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" },
+          "target": {
+            "type": "id",
+            "viewId": "com.ss.android.article.news:id/ki9"
+          },
           "delayMs": 300
         }
       ],
-      "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
     },
     {
       "id": "read_text",
@@ -74,14 +116,29 @@
       "trigger": {
         "type": "allOf",
         "triggers": [
-          { "type": "afterGoal", "goalId": "open_search" },
-          { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" } }
+          {
+            "type": "afterGoal",
+            "goalId": "open_search"
+          },
+          {
+            "type": "elementVisible",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/cx"
+            }
+          }
         ]
       },
       "actions": [
         {
-          "type": "readText",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" },
+          "type": "storeValue",
+          "source": {
+            "type": "screen",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/cx"
+            }
+          },
           "variableName": "search_hint",
           "delayMs": 300,
           "timeoutMs": 2500
@@ -93,10 +150,17 @@
           "speakVoice": false
         }
       ],
-      "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
     }
   ],
-  "termination": { "type": "allGoalsDone" },
+  "termination": {
+    "type": "allGoalsDone"
+  },
   "pacingPreset": "STANDARD",
   "scanConfig": {
     "idleIntervalMs": 600,

@@ -4,11 +4,14 @@
   <img src="https://via.placeholder.com/800x200?text=Kuaiyou+Master+Open+Source" alt="Kuaiyou Master Logo">
   <h3>下一代基于大模型与 MCP 协议的 Android 端侧响应式自动化 (Reactive Automation) 生态</h3>
   <br />
-  <a href="https://github.com/ScottHughes6/kuaiyou-open-source">
-    <img src="https://img.shields.io/github/stars/ScottHughes6/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
+  <a href="https://github.com/kuaiyou-app/kuaiyou-open-source">
+    <img src="https://img.shields.io/github/stars/kuaiyou-app/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
   </a>
-  <a href="https://github.com/ScottHughes6/kuaiyou-open-source/blob/main/LICENSE">
+  <a href="https://github.com/kuaiyou-app/kuaiyou-open-source/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
+  </a>
+  <a href="https://kuaiyou-app.github.io/kuaiyou-website/">
+    <img src="https://img.shields.io/badge/Website-GitHub%20Pages-blue.svg" alt="Website" />
   </a>
 </div>
 
@@ -20,7 +23,8 @@
 
 > **⚠️ 注意**：
 > 快游大师的 Android 客户端本体（包含底层的无障碍执行引擎与商业化模块）为闭源项目。您可以在各大安卓应用商店（华为、小米、应用宝等）搜索 **“快游大师”** 免费下载。
-> **本仓库包含了与该 App 配套的所有生态工具、MCP 服务端、通信协议 (Schema) 以及社区共建的技能案例库。**
+> **本仓库包含了与该 App 配套的 MCP 服务端、通信协议 (Schema) 以及社区共建的技能案例库。**
+> **开源官网**已独立发布：[`kuaiyou-app/kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website) → https://kuaiyou-app.github.io/kuaiyou-website/
 
 ---
 
@@ -41,10 +45,11 @@
 | 目录/模块 | 描述 |
 | --- | --- |
 | **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端（MCP 协议）。打通 PC 编排与 Android 实机联调，向 AI 暴露节点提取、截图和脚本下发能力。 |
-| **[schema.json](./schema.json)** | 全局标准的 Zod 导出的 `ReactiveSkill` JSON Schema。V2 版本已完全纯净，不含 `agentId`。 |
+| **[schema.json](./schema.json)** | 手写权威 `ReactiveSkill` JSON Schema（LLM/App 契约）。V2 不含 `agentId`，也不声明已移除的 `readText`/`setClipboard`。 |
 | **[docs](./docs/)** | 详尽的开发者指南，包含 V2 技能编写与联调手册、避坑指南等。 |
 | **[examples](./examples/)** | 规范的 V2 技能脚本示例，包含无限刷视频、智能互动等。 |
 | **[skills](./skills/) / [agent-skills](./agent-skills/)** | 社区共建脚本库及供 AI (Claude/Cursor) 挂载的技能提示词。 |
+| **[kuaiyou-website](https://github.com/kuaiyou-app/kuaiyou-website)** | 独立开源官网（GitHub Pages）。 |
 
 ---
 
@@ -54,19 +59,21 @@
 
 ### 1. 准备手机端
 - 在应用商店下载并安装最新版 **“快游大师”**。
-- 打开 App 的“设置”页面，勾选 **“局域网 MCP 服务 (LAN MCP Service)”**，并记录显示的局域网 IP（例如 `192.168.1.100`）。
-- *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，系统会自动回退到 ADB 模式。)*
+- 打开 App 的“设置”页面，勾选 **“局域网 MCP 服务”**，记录局域网地址，并 **复制配对码**。
+- *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，系统会自动回退到 ADB 模式。多设备时设置 `KUAIYOU_ADB_SERIAL`。)*
 
 ### 2. 在 AI 助理中配置 MCP Server
-在您的 Cursor (Settings -> Features -> MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
+在您的 Cursor (Settings → Features → MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
 
 ```bash
-# 局域网直连模式（推荐，速度最快，请替换为您手机的 IP）
-KUAIYOU_DEVICE_IP=192.168.1.100 npx -y kuaiyou-mcp-server
+# 局域网直连（推荐）：设备 IP + App 显示的 6 位配对码
+KUAIYOU_DEVICE_IP=192.168.1.100 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
 
-# USB 数据线直连模式 (Fallback)
-npx -y kuaiyou-mcp-server
+# USB 数据线直连模式 (Fallback，可选指定序列号)
+KUAIYOU_ADB_SERIAL=<serial> npx -y kuaiyou-mcp-server
 ```
+
+> 配对码通过 `Authorization: Bearer` 发送（也兼容旧环境变量名 `KUAIYOU_MCP_TOKEN`）；读写技能请使用 `storeValue`，不要使用已移除的 `readText` / `setClipboard`。
 
 ### 3. 开始向 AI 下达指令！
 回到对话框，直接向 AI 说：
@@ -80,7 +87,8 @@ npx -y kuaiyou-mcp-server
 
 我们极其渴望极客玩家和开发者们参与到这套全新生态的建设中来！无论您是优化 MCP Server，还是想把刚用 AI 生成的实用自动化 JSON 分享给大家，我们都热烈欢迎！
 
-- 🐛 **提交 Bug 或建议**: 欢迎在 [GitHub Issues](https://github.com/ScottHughes6/kuaiyou-open-source/issues) 留言。
+- 🐛 **提交 Bug 或建议**: 欢迎在 [GitHub Issues](https://github.com/kuaiyou-app/kuaiyou-open-source/issues) 留言。
+- 🌐 **官网相关**: 请到 [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website/issues) 提 Issue。
 - 📖 **贡献代码与脚本**: 请查阅我们的 [贡献指南 (CONTRIBUTING.md)](./CONTRIBUTING.md) 了解如何向仓库提交 PR。
 
 ---

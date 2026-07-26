@@ -38,10 +38,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Verify schema.json is up to date
-        run: |
-          npm run build:schema
-          git diff --exit-code ../schema.json
+      - name: Verify handwritten schema.json integrity
+        run: npm run check:schema
 
       - name: Pack and smoke-test the published tarball
         run: |
@@ -63,34 +61,6 @@ jobs:
             await client.close();
             console.log("smoke test ok: " + tools.length + " tools");
           ' "$workdir/node_modules/kuaiyou-mcp-server/build/index.js"
-
-  website:
-    name: Website
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./website
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use Node.js from .nvmrc
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-          cache-dependency-path: './website/package-lock.json'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npx tsc --noEmit
-
-      - name: Build
-        run: npm run build
 
   skills:
     name: Skills

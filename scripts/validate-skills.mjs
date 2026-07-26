@@ -1,16 +1,18 @@
-// Validates every skills/*.json against the authoritative ReactiveSkillSchema
-// (the same Zod schema the MCP server validates with, imported from its build
-// output — kuaiyou-mcp-server must be built first, see the CI skills job).
-// Also verifies the generated index contract. schema.json is the public
-// projection of that schema and is kept in sync by the CI drift check.
+// Validates every skills/*.json and examples/*.json against:
+// 1) ReactiveSkillSchema (Zod) + skill-lint forbidden aliases / refs
+// 2) Handwritten root schema.json (JSON Schema via Ajv)
+// Also verifies the generated index contract.
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
+import { createRequire } from "module";
 
+const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const skillsDir = join(repoRoot, "skills");
+const examplesDir = join(repoRoot, "examples");
 
 const schemaModulePath = join(
   repoRoot,
@@ -18,46 +20,95 @@ const schemaModulePath = join(
   "build",
   "reactive-skill-schema.mjs"
 );
-if (!existsSync(schemaModulePath)) {
+const lintModulePath = join(repoRoot, "kuaiyou-mcp-server", "build", "skill-lint.mjs");
+if (!existsSync(schemaModulePath) || !existsSync(lintModulePath)) {
   console.error(
     "Missing kuaiyou-mcp-server build output. Run `npm ci && npm run build` " +
       "inside kuaiyou-mcp-server/ before validating skills."
   );
   process.exit(1);
 }
-const { ReactiveSkillSchema } = await import(pathToFileURL(schemaModulePath).href);
+const { validateSkillPayload } = await import(pathToFileURL(lintModulePath).href);
 
-const files = readdirSync(skillsDir).filter((f) => f.endsWith(".json") && f !== "index.json");
-let failed = false;
-const ids = new Set();
-
-for (const file of files) {
-  let data;
+let Ajv;
+try {
+  ({ default: Ajv } = await import("ajv"));
+} catch {
+  // Prefer mcp-server's ajv if installed there
   try {
-    data = JSON.parse(readFileSync(join(skillsDir, file), "utf8"));
-  } catch (e) {
-    console.error(`✗ ${file}: invalid JSON — ${e.message}`);
-    failed = true;
-    continue;
-  }
-  const result = ReactiveSkillSchema.safeParse(data);
-  if (!result.success) {
-    const errors = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
-    console.error(`✗ ${file}:\n  ${errors.join("\n  ")}`);
-    failed = true;
-  } else {
-    if (ids.has(data.id)) {
-      console.error(`✗ ${file}: duplicate id "${data.id}"`);
-      failed = true;
-    }
-    ids.add(data.id);
-    console.log(`✓ ${file}`);
+    Ajv = require(join(repoRoot, "kuaiyou-mcp-server/node_modules/ajv"));
+  } catch {
+    console.error("Ajv is required. Install with: npm install ajv --prefix kuaiyou-mcp-server");
+    process.exit(1);
   }
 }
 
-// Verify the index contract: generator output must be { skills: [...] } and
-// cover exactly the valid skill files consumed by the website.
-execFileSync("node", [join(repoRoot, "scripts", "build-skill-index.js")], { stdio: "inherit" });
+const draftSchema = JSON.parse(readFileSync(join(repoRoot, "schema.json"), "utf8"));
+// Ajv draft-07: strip $schema if draft-2020 to avoid hard failure; handwritten uses draft-07.
+const ajv = new Ajv({ allErrors: true, strict: false });
+const validateJsonSchema = ajv.compile(draftSchema);
+
+const BANNED = ["readText", "setClipboard", "askAgent"];
+
+function collectJsonFiles(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".json") && f !== "index.json")
+    .map((f) => join(dir, f));
+}
+
+let failed = false;
+const ids = new Set();
+
+for (const filePath of [...collectJsonFiles(skillsDir), ...collectJsonFiles(examplesDir)]) {
+  const rel = filePath.slice(repoRoot.length + 1);
+  let data;
+  try {
+    data = JSON.parse(readFileSync(filePath, "utf8"));
+  } catch (e) {
+    console.error(`✗ ${rel}: invalid JSON — ${e.message}`);
+    failed = true;
+    continue;
+  }
+
+  const blob = JSON.stringify(data);
+  for (const banned of BANNED) {
+    if (blob.includes(`"type":"${banned}"`) || blob.includes(`"type": "${banned}"`)) {
+      console.error(`✗ ${rel}: contains forbidden type "${banned}"`);
+      failed = true;
+    }
+  }
+
+  const lint = validateSkillPayload(data);
+  if (!lint.ok) {
+    console.error(`✗ ${rel} (Zod/lint):\n  ${lint.errors.join("\n  ")}`);
+    failed = true;
+  }
+
+  const jsOk = validateJsonSchema(data);
+  if (!jsOk) {
+    const errs = (validateJsonSchema.errors || [])
+      .map((e) => `${e.instancePath || "/"} ${e.message}`)
+      .join("\n  ");
+    console.error(`✗ ${rel} (JSON Schema):\n  ${errs}`);
+    failed = true;
+  }
+
+  if (lint.ok && jsOk) {
+    if (filePath.startsWith(skillsDir)) {
+      if (ids.has(data.id)) {
+        console.error(`✗ ${rel}: duplicate id "${data.id}"`);
+        failed = true;
+      }
+      ids.add(data.id);
+    }
+    const warnNote = lint.warnings.length ? ` (${lint.warnings.length} warning(s))` : "";
+    console.log(`✓ ${rel}${warnNote}`);
+  }
+}
+
+// Verify the index contract for skills only
+execFileSync("node", [join(repoRoot, "scripts/build-skill-index.js")], { stdio: "inherit" });
 const index = JSON.parse(readFileSync(join(skillsDir, "index.json"), "utf8"));
 if (!Array.isArray(index.skills)) {
   console.error("✗ index.json: expected { skills: [...] } shape");
@@ -72,4 +123,4 @@ if (!Array.isArray(index.skills)) {
 if (failed) {
   process.exit(1);
 }
-console.log("All skills valid.");
+console.log("All skills and examples valid.");
