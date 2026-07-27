@@ -8,7 +8,7 @@
 
 这套基于 AI 的端到端热重载体系由三部分组成：
 1. **快游大师 App（手机端）**：内置基于无障碍服务的 `ReactiveExecutionEngine` 与微型 HTTP Server，负责提供截屏/节点树和执行传入的 `ReactiveSkill` 任务。
-2. **kuaiyou-mcp-server（PC 端中介）**：连接 AI 与手机。通过局域网 (HTTP) 或 USB (ADB) 获取手机状态，并将代码转化为手机可读的指令。
+2. **kuaiyou-mcp-server（PC 端中介）**：已发布到 [npm](https://www.npmjs.com/package/kuaiyou-mcp-server)。连接 AI 与手机，通过局域网 (HTTP) 或 USB (ADB) 获取手机状态，并将技能推送到手机。
 3. **Cursor / Claude Desktop（AI 客户端）**：作为超级大脑，根据用户的自然语言需求和当前屏幕状态，自动编写和修改自动化代码。
 
 ---
@@ -17,25 +17,31 @@
 
 ### 1. 手机端配置
 1. 在各大手机应用商店（如华为、小米、应用宝等）搜索并安装最新版 **“快游大师”**。
-2. 打开 App 设置，找到并开启 **“局域网 MCP 服务 (LAN MCP Service)”** 选项。
-3. 记录下界面显示的设备局域网 IP（例如 `192.168.1.100`）。
-*(若无法使用局域网，可通过数据线连接电脑并开启 Android 开发者模式的 USB 调试即可)*
+2. 打开 **设置 → 高级设置 → MCP 服务**，打开开关。
+3. 副标题分两行显示地址（如 `http://192.168.1.100:3847`）与配对码；**点击该条目**可复制给 Agent 的连接命令。
+*(若无法使用局域网，可通过数据线连接电脑并开启 USB 调试，MCP Server 会回退到 ADB。)*
 
-### 2. PC 端配置 MCP Server
-我们通过 NPM 提供了极其轻量的 `kuaiyou-mcp-server`。
+### 2. PC 端安装 / 启动 MCP Server
+需要 **Node.js ≥ 18**。包已在 npm 公开：
+
+```bash
+# 临时运行（推荐，自动下载最新版）
+npx -y kuaiyou-mcp-server
+
+# 或全局安装
+npm install -g kuaiyou-mcp-server
+```
+
+包页：https://www.npmjs.com/package/kuaiyou-mcp-server
 
 **在 Cursor 中配置：**
-1. 打开 Cursor Settings > Features > MCP。
+1. 打开 Cursor Settings → Features → MCP。
 2. 点击 **+ Add New MCP Server**。
-3. Name 填写 `kuaiyou-mcp`。
+3. Name 填写 `kuaiyou`。
 4. Type 选择 `command`。
-5. Command 填写：
+5. Command 填写（把 IP:端口 / 配对码换成 App 里显示的值）：
    ```bash
-   npx -y kuaiyou-mcp-server
-   ```
-   *如果您使用局域网连接，请传入环境变量告诉 Server 手机的 IP（或者在项目根目录建一个 `.env` 文件）：*
-   ```bash
-   KUAIYOU_DEVICE_IP=192.168.1.100 npx -y kuaiyou-mcp-server
+   KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
    ```
 
 **在 Claude Desktop 中配置：**
@@ -43,16 +49,19 @@
 ```json
 {
   "mcpServers": {
-    "kuaiyou-mcp": {
+    "kuaiyou": {
       "command": "npx",
       "args": ["-y", "kuaiyou-mcp-server"],
       "env": {
-        "KUAIYOU_DEVICE_IP": "192.168.1.100"
+        "KUAIYOU_DEVICE_IP": "192.168.1.100:3847",
+        "KUAIYOU_MCP_PAIRING_CODE": "482917"
       }
     }
   }
 }
 ```
+
+> `KUAIYOU_DEVICE_IP` 支持 `ip` 或 `ip:port`（未写端口时默认 `8080`）。配对码也可用旧环境变量名 `KUAIYOU_MCP_TOKEN`。
 
 ---
 
@@ -70,9 +79,8 @@
 
 **接下来发生的事情会让你惊叹：**
 1. AI 自动调用工具，获取了您手机的界面节点和图片。
-2. AI 分析发现屏幕上有一个文本为“签到领金币”的按钮，其坐标为 `[250, 400]`。
-3. AI 开始撰写符合快游大师规范的 `ReactiveSkill` JSON，使用 `GoalAction: ClickAction` 并配以 `TextTargetSelector`。
-4. AI 调用 `push_reactive_skill`。
-5. 你的手机屏幕上瞬间弹出了“是否执行此调试技能？”的提示。你点击运行，手机自动完成了签到！
+2. AI 分析屏幕上的可交互元素并生成符合规范的 `ReactiveSkill` JSON（使用 `tap` / `storeValue` 等本地动作）。
+3. AI 调用 `push_reactive_skill`。
+4. 你的手机弹出导入确认；确认后即可本地执行。
 
-如果过程有任何偏差，你只需要告诉 AI：“没点中，帮我换成图像识别模式再试一次”，AI 将在 3 秒内把修改后的代码推送到你的手机。**这就是快游大师 MCP 生态带来的极致开发体验！**
+如果过程有任何偏差，你只需要告诉 AI 调整目标或动作，再推送一次。**这就是快游大师 MCP 生态带来的极致开发体验！**

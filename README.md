@@ -7,6 +7,9 @@
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source">
     <img src="https://img.shields.io/github/stars/kuaiyou-app/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
   </a>
+  <a href="https://www.npmjs.com/package/kuaiyou-mcp-server">
+    <img src="https://img.shields.io/npm/v/kuaiyou-mcp-server.svg" alt="npm version" />
+  </a>
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </a>
@@ -59,19 +62,24 @@
 
 ### 1. 准备手机端
 - 在应用商店下载并安装最新版 **“快游大师”**。
-- 打开 App 的“设置”页面，勾选 **“局域网 MCP 服务”**，记录局域网地址，并 **复制配对码**。
+- 打开 **设置 → 高级设置 → MCP 服务**，开启开关。
+- 副标题会显示地址与配对码；**点击该条目**可复制给 Agent 的连接信息。
 - *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，系统会自动回退到 ADB 模式。多设备时设置 `KUAIYOU_ADB_SERIAL`。)*
 
 ### 2. 在 AI 助理中配置 MCP Server
-在您的 Cursor (Settings → Features → MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
+`kuaiyou-mcp-server` 已发布到 npm（[kuaiyou-mcp-server](https://www.npmjs.com/package/kuaiyou-mcp-server)）。需 **Node.js ≥ 18**。
+
+在 Cursor (Settings → Features → MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
 
 ```bash
-# 局域网直连（推荐）：设备 IP + App 显示的 6 位配对码
-KUAIYOU_DEVICE_IP=192.168.1.100 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
+# 局域网直连（推荐）：设备 IP:端口 + App 显示的 6 位配对码
+KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
 
 # USB 数据线直连模式 (Fallback，可选指定序列号)
 KUAIYOU_ADB_SERIAL=<serial> npx -y kuaiyou-mcp-server
 ```
+
+也可全局安装：`npm install -g kuaiyou-mcp-server`。
 
 > 配对码通过 `Authorization: Bearer` 发送（也兼容旧环境变量名 `KUAIYOU_MCP_TOKEN`）；读写技能请使用 `storeValue`，不要使用已移除的 `readText` / `setClipboard`。
 

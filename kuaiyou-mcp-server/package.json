@@ -7,7 +7,9 @@
     "kuaiyou-mcp-server": "build/index.js"
   },
   "files": [
-    "build"
+    "build",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
