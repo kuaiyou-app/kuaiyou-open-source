@@ -16,6 +16,42 @@ const nonNegativeMs = z.number().int().nonnegative();
 /** Screen-relative coordinates ("Pct" suffix) are fractions in [0, 1]. */
 const pct = z.number().min(0).max(1);
 
+/**
+ * Closed value sets that the App parses into Kotlin enums. A value outside the
+ * set is rejected device-side at import time, so accepting it here would only
+ * trade a local error for a failed round-trip to the phone. Values mirror the
+ * App enums (GoalExecutionMode, PacingPreset, FallbackPolicy, LoopFailurePolicy,
+ * CompletionPolicy, SystemActionType, InputMode, ScrollDirection) and the
+ * handwritten schema.json.
+ */
+const enumOf = (name: string, values: readonly [string, ...string[]]) =>
+  z.enum(values as unknown as [string, ...string[]], {
+    error: (issue) =>
+      issue.input === undefined
+        ? `${name} is required`
+        : `${name} must be one of ${values.join(" | ")} (got ${JSON.stringify(issue.input)})`,
+  });
+
+// Skill-level mode. The App keeps SEQUENTIAL as a legacy alias for REACTIVE.
+const skillExecutionMode = enumOf("executionMode", ["REACTIVE", "SEQUENTIAL"]);
+const goalExecutionMode = enumOf("constraints.executionMode", ["SINGLE", "REPEAT"]);
+const pacingPreset = enumOf("pacingPreset", ["FAST", "STANDARD", "CAREFUL"]);
+const fallbackPolicy = enumOf("constraints.fallbackPolicy", ["AUTO_ONLY", "ALLOW_PROMPT", "STRICT"]);
+const loopFailurePolicy = enumOf("constraints.loopFailurePolicy", [
+  "SKIP_ROUND",
+  "ABORT",
+  "RETRY_AFTER_COOLDOWN",
+]);
+const systemActionType = enumOf("systemType", [
+  "BACK",
+  "HOME",
+  "RECENTS",
+  "NOTIFICATIONS",
+  "QUICK_SETTINGS",
+]);
+const inputMode = enumOf("mode", ["DEFAULT", "PASTE", "WECHAT_SPECIAL"]);
+const scrollDirection = enumOf("direction", ["UP", "DOWN", "LEFT", "RIGHT"]);
+
 type LooseRecord = Record<string, unknown>;
 
 function requireField(obj: LooseRecord, ctx: z.RefinementCtx, field: string): void {
@@ -183,9 +219,9 @@ const ActionSchema = z.looseObject({
   pressDurationMs: nonNegativeMs.optional(),
   text: z.string().optional(),
   clearFirst: z.boolean().optional(),
-  mode: z.string().optional(),
-  systemType: z.string().optional(),
-  direction: z.string().optional(),
+  mode: inputMode.optional(),
+  systemType: systemActionType.optional(),
+  direction: scrollDirection.optional(),
   maxScrolls: z.number().int().positive().optional(),
   scrollDurationMs: nonNegativeMs.optional(),
   settleDelayMs: nonNegativeMs.optional(),
@@ -267,10 +303,10 @@ const ConstraintsSchema = z.looseObject({
   cooldownMs: nonNegativeMs.optional(),
   continueOnFailure: z.boolean().optional(),
   enabled: z.boolean().optional(),
-  executionMode: z.string().optional(),
+  executionMode: goalExecutionMode.optional(),
   optional: z.boolean().optional(),
-  fallbackPolicy: z.string().optional(),
-  loopFailurePolicy: z.string().optional(),
+  fallbackPolicy: fallbackPolicy.optional(),
+  loopFailurePolicy: loopFailurePolicy.optional(),
   recognitionTimeoutMs: nonNegativeMs.optional(),
   maxRecognitionAttempts: z.number().int().positive().optional(),
 });
@@ -325,13 +361,13 @@ export const ReactiveSkillSchema = z.looseObject({
   id: nonEmptyString,
   name: nonEmptyString,
   description: nonEmptyString,
-  executionMode: z.string().optional(),
+  executionMode: skillExecutionMode.optional(),
   agentId: z.string().optional(),
   termination: TerminationSchema.optional(),
   launchApp: LaunchAppSchema.optional(),
   interrupts: z.array(InterruptSchema).optional(),
   goals: z.array(GoalSchema).min(1),
-  pacingPreset: z.string().optional(),
+  pacingPreset: pacingPreset.optional(),
   scanConfig: ScanConfigSchema.optional(),
   returnToApp: z.boolean().optional(),
 });
