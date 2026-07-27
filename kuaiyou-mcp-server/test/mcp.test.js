@@ -10,8 +10,8 @@ let client;
 let transport;
 
 before(async () => {
-  // No KUAIYOU_DEVICE_IP => device calls fall through to ADB, which we never
-  // reach in these tests: we only exercise the protocol, validation, and
+  // No KUAIYOU_DEVICE_IP => device tools short-circuit with a "needs a device
+  // address" error. These tests only exercise the protocol, validation, and
   // argument-checking layers, all of which run before any device I/O.
   transport = new StdioClientTransport({
     command: "node",
@@ -157,4 +157,26 @@ test("unknown tool returns a method-not-found error", async () => {
     client.callTool({ name: "does_not_exist", arguments: {} }),
     /Unknown tool/
   );
+});
+
+// The server advertises its version as a literal in src/index.ts, which is easy
+// to forget when bumping package.json. Keep the two in lockstep.
+test("advertised server version matches package.json", async () => {
+  const pkg = require("../package.json");
+  const info = client.getServerVersion();
+  assert.equal(info.version, pkg.version);
+  assert.equal(info.name, pkg.name);
+});
+
+// Regression: a timeout used to be reported as "not available yet on this App
+// build", which blamed the App instead of the connection. Without
+// KUAIYOU_DEVICE_IP the tool must ask for an address instead.
+test("device tools report a missing address rather than an unsupported build", async () => {
+  for (const name of ["list_skills", "get_ui_tree", "capture_screenshot"]) {
+    const res = await client.callTool({ name, arguments: {} });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true, `${name} should error without a device address`);
+    assert.match(text, /needs a device address/, `${name}: ${text}`);
+    assert.doesNotMatch(text, /not available yet on this App build/, `${name}: ${text}`);
+  }
 });
