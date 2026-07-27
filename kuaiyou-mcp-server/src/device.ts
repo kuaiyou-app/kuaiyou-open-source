@@ -24,6 +24,27 @@ function adbPrefix(): string[] {
   return serial ? ["-s", serial] : [];
 }
 
+// Android applicationId of the Kuaiyou Master App. Used to build the
+// app-specific external files path for the ADB import fallback
+// (/sdcard/Android/data/<pkg>/files), which the App can read under
+// scoped storage on Android 11+.
+// Override for internal test builds, which append an applicationIdSuffix.
+export const DEFAULT_APP_PACKAGE = "com.kuaiyou.automator.clicker";
+const APP_PACKAGE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+
+export function getPackageName(): string {
+  const override = process.env.KUAIYOU_APP_PACKAGE?.trim();
+  if (!override) return DEFAULT_APP_PACKAGE;
+  // Reject anything that is not a plain Java package name so the value can
+  // never inject extra path segments or arguments into the adb invocation.
+  if (!APP_PACKAGE_PATTERN.test(override)) {
+    throw new Error(
+      `Invalid KUAIYOU_APP_PACKAGE: ${override}. Expected a package name like ${DEFAULT_APP_PACKAGE}.`
+    );
+  }
+  return override;
+}
+
 // fetch() whose timeout covers the full response *including body consumption*.
 // The AbortController is only cleared after the body is read, unlike a naive
 // timeout that fires solely around the headers.

@@ -22,6 +22,7 @@ import {
   httpPostForm,
   withDeviceLock,
   sniffImageMime,
+  getPackageName,
 } from "./device.js";
 
 dotenv.config();
