@@ -15,27 +15,27 @@
 
 ## 要求
 
-- Node.js ≥ 18
+- Node.js ≥ 18、npm ≥ 9
 - 手机已安装快游大师，并开启 **MCP 服务**
-- 局域网模式：手机与电脑同一 Wi‑Fi；点击「MCP 服务」可复制连接信息
+- 局域网模式：手机与电脑同一 Wi‑Fi；点击「MCP 服务」可复制给 Agent 的完整连接配置
 
-## 安装 / 运行
+## 安装 / 配置
 
-```bash
-# 推荐：npx
-npx -y autoace-cli
+`autoace-cli` 是 stdio MCP server。请在 Cursor / Claude / Codex 等客户端中注册，而不是只在普通终端前台运行：
 
-# 全局安装
-npm install -g autoace-cli
-autoace-cli
+```text
+serverName: autoace
+transport: stdio
+command: npx
+args: ["-y", "autoace-cli"]
+env:
+  KUAIYOU_DEVICE_IP: "192.168.1.100:41899"
+  KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
-局域网示例：
+端口与配对码每次开启 MCP 服务都会变化，请使用 App 当前复制的值；配对码不要写入项目仓库、日志或 Git 提交。连续错码返回 `429` 时，按 `Retry-After` 等待后再试。
 
-```bash
-# 端口与配对码每次开启 MCP 服务都会变，请照 App 当前显示的值填写
-KUAIYOU_DEVICE_IP=192.168.1.100:41899 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
-```
+也可全局安装：`npm install -g autoace-cli`，客户端 command 使用 `autoace-cli`。
 
 ## License
 

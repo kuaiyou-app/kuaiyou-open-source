@@ -29,17 +29,11 @@
 
 1. 安装 **「快游大师」**。
 2. **设置 → 高级设置 → MCP 服务** 打开。
-3. 点击该条目，复制 IP:端口与配对码。
+3. 副标题默认遮罩配对码；需要人工查看时点眼睛图标。点击 MCP 服务条目，可复制给 Agent 的完整 stdio 连接配置。
 
-### 2. 安装 autoace-cli
+### 2. 配置 autoace-cli
 
-需 **Node.js ≥ 18**。
-
-```bash
-npx -y autoace-cli
-# 或
-npm install -g autoace-cli
-```
+需 **Node.js ≥ 18、npm ≥ 9**。`autoace-cli` 是 stdio MCP server，应注册到 MCP 客户端，而不是只在普通终端前台运行。
 
 包页：https://www.npmjs.com/package/autoace-cli
 
@@ -49,7 +43,7 @@ npm install -g autoace-cli
 
 ## 在各客户端配置 MCP（必做）
 
-把下面的 IP / 配对码换成 App 显示的值。MCP server 名称建议用 **`autoace`**。
+点击 App 的 MCP 服务条目，把复制内容粘贴给 Agent；它会按当前客户端格式注册下面这组用户级或本地配置。MCP server 名称建议用 **`autoace`**。不要把配对码写入项目仓库、日志或 Git 提交。
 
 ### Cursor / Claude Desktop
 
@@ -78,10 +72,10 @@ npm install -g autoace-cli
 
 > **端口与配对码每次开启 MCP 服务都会变**：端口由系统临时分配，配对码是新生成的 6 位数字。
 > 因此 `KUAIYOU_DEVICE_IP` **必须带端口**（`ip:port`），并且每次重开服务后都要按 App 上的新值重填这两个环境变量；
-> 点击 App 里的「MCP 服务」条目可一次性复制完整连接信息。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。
+> 点击 App 里的「MCP 服务」条目可一次性复制完整 stdio 配置；Android 13+ 会把这段剪贴板内容标记为敏感。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。
 > 当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。
 >
-> 配对码连续输错会触发设备端退避（返回 `429` 并带 `Retry-After`），等提示的秒数后用当前配对码重试即可。
+> 配对码连续输错会触发设备端退避（返回 `429` 并带 `Retry-After`），等提示的秒数后用当前配对码重试即可。配置后请重载 MCP；若当前会话不能热加载，则重启会话。
 
 ---
 

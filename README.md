@@ -59,19 +59,27 @@
 ### 1. 准备手机端
 - 安装最新版 **「快游大师」**。
 - 打开 **设置 → 高级设置 → MCP 服务**，开启开关。
-- 副标题显示地址与配对码；**点击该条目**可复制给 Agent 的连接信息。
+- 副标题显示地址与遮罩配对码；需要人工查看时点眼睛图标。**点击该条目**可复制给 Agent 的完整 stdio MCP 配置。
 - *(当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。)*
 
 ### 2. 配置 autoace-cli
-需 **Node.js ≥ 18**。npm 包名：**`autoace-cli`**。
+需 **Node.js ≥ 18、npm ≥ 9**。npm 包名：**`autoace-cli`**。
 
-```bash
-# 局域网（替换为 App 显示的 IP:端口 与配对码）
-# 端口与配对码每次开启 MCP 服务都会变，请照 App 当前显示的值填写
-KUAIYOU_DEVICE_IP=192.168.1.100:41899 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
+把 App 复制的信息粘贴给 Agent；它会按当前客户端格式注册以下用户级或本地 MCP 服务：
+
+```text
+serverName: autoace
+transport: stdio
+command: npx
+args: ["-y", "autoace-cli"]
+env:
+  KUAIYOU_DEVICE_IP: "192.168.1.100:41899"
+  KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
-也可：`npm install -g autoace-cli`。
+不要只在普通终端前台运行 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启服务都会变化，请始终使用 App 当前复制的值。
+
+也可全局安装：`npm install -g autoace-cli`。
 
 推荐同时安装 Agent Skill **`autoace`**（见 [教程](./docs/mcp-ecosystem-tutorial.md)），在 Claude Code 用 `/autoace`，在 Codex 用 `$autoace`。
 
