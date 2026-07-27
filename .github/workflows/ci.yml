@@ -41,6 +41,9 @@ jobs:
       - name: Verify handwritten schema.json integrity
         run: npm run check:schema
 
+      - name: Verify schema.json enums are enforced by the validator
+        run: npm run build:schema && node ../scripts/check-enum-parity.mjs
+
       - name: Pack and smoke-test the published tarball
         run: |
           npm pack

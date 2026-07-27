@@ -19,7 +19,8 @@
     "build:schema": "npm run build && node scripts/build-schema.mjs",
     "check:schema": "npm run build && node scripts/check-schema-compat.mjs",
     "prepack": "npm run build",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "check:enums": "npm run build:schema && node ../scripts/check-enum-parity.mjs"
   },
   "keywords": [
     "mcp",

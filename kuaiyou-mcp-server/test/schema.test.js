@@ -270,6 +270,9 @@ test("rejects closed-set values the device would refuse", () => {
     ["constraints.loopFailurePolicy", (s) => (s.goals[0].constraints.loopFailurePolicy = "RETRY")],
     ["skill executionMode", (s) => (s.executionMode = "PARALLEL")],
     ["pacingPreset", (s) => (s.pacingPreset = "TURBO")],
+    // The schema used to document TESTED / PENDING_TEST, which the App has never had.
+    ["debugStatus", (s) => (s.debugStatus = "TESTED")],
+    ["debugStatus", (s) => (s.debugStatus = "PENDING_TEST")],
     ["systemType", (s) => (s.goals[0].actions[0] = { type: "systemAction", systemType: "EXIT" })],
   ];
   for (const [label, mutate] of cases) {
@@ -293,6 +296,7 @@ test("accepts every documented value for the closed sets", () => {
   for (const v of ["SKIP_ROUND", "ABORT", "RETRY_AFTER_COOLDOWN"])
     ok((s) => (s.goals[0].constraints.loopFailurePolicy = v));
   for (const v of ["FAST", "STANDARD", "CAREFUL"]) ok((s) => (s.pacingPreset = v));
+  for (const v of ["SUCCESS", "PARTIAL_SUCCESS", "INCOMPLETE"]) ok((s) => (s.debugStatus = v));
   for (const v of ["UP", "DOWN", "LEFT", "RIGHT"])
     ok((s) => (s.goals[0].actions[0] = { type: "scrollTo", direction: v, target: { type: "text", text: "x" } }));
   for (const v of ["DEFAULT", "PASTE", "WECHAT_SPECIAL"])

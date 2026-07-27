@@ -51,6 +51,12 @@ const systemActionType = enumOf("systemType", [
 ]);
 const inputMode = enumOf("mode", ["DEFAULT", "PASTE", "WECHAT_SPECIAL"]);
 const scrollDirection = enumOf("direction", ["UP", "DOWN", "LEFT", "RIGHT"]);
+// App DebugStatus. INCOMPLETE skills are not accepted for execution.
+const debugStatus = enumOf("debugStatus", ["SUCCESS", "PARTIAL_SUCCESS", "INCOMPLETE"]);
+// App TextMatchMode. `exact` is the legacy boolean form of EXACT/CONTAINS.
+const textMatchMode = enumOf("matchMode", ["EXACT", "CONTAINS", "REGEX", "STARTS_WITH", "ENDS_WITH"]);
+const imageFormat = enumOf("imageFormat", ["PNG", "JPEG"]);
+const completionPolicy = enumOf("completionPolicy", ["WARNING_ONLY", "STRICT_FAIL", "RETRY_THEN_FAIL"]);
 
 type LooseRecord = Record<string, unknown>;
 
@@ -81,6 +87,7 @@ const TargetSchema = z.looseObject({
   desc: z.string().optional(),
   viewId: z.string().optional(),
   exact: z.boolean().optional(),
+  matchMode: textMatchMode.optional(),
   textExact: z.boolean().optional(),
   index: z.number().int().optional(),
   description: z.string().optional(),
@@ -220,6 +227,7 @@ const ActionSchema = z.looseObject({
   text: z.string().optional(),
   clearFirst: z.boolean().optional(),
   mode: inputMode.optional(),
+  imageFormat: imageFormat.optional(),
   systemType: systemActionType.optional(),
   direction: scrollDirection.optional(),
   maxScrolls: z.number().int().positive().optional(),
@@ -319,6 +327,7 @@ const GoalSchema = z.looseObject({
   action: ActionSchema.optional(),
   actions: z.array(ActionSchema).optional(),
   constraints: ConstraintsSchema.optional(),
+  completionPolicy: completionPolicy.optional(),
 });
 
 const InterruptSchema = z.looseObject({
@@ -368,6 +377,7 @@ export const ReactiveSkillSchema = z.looseObject({
   interrupts: z.array(InterruptSchema).optional(),
   goals: z.array(GoalSchema).min(1),
   pacingPreset: pacingPreset.optional(),
+  debugStatus: debugStatus.optional(),
   scanConfig: ScanConfigSchema.optional(),
   returnToApp: z.boolean().optional(),
 });

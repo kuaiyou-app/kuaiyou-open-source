@@ -1,5 +1,7 @@
 /**
- * CI gate: handwritten root schema.json must remain the checked-in contract.
+ * CI gate: root schema.json is the client-owned contract mirror and must not be
+ * rewritten by the build. The App exports it during release (Gradle
+ * generateMcpSkillSchema); this repo only mirrors it.
  * Optionally regenerates the Zod projection for diagnostics (never overwrites schema.json).
  */
 import { existsSync, readFileSync } from "fs";
@@ -24,13 +26,13 @@ execFileSync("node", [join(__dirname, "build-schema.mjs")], { stdio: "inherit" }
 
 const after = createHash("sha256").update(readFileSync(schemaPath)).digest("hex");
 if (before !== after) {
-  console.error("FATAL: schema.json was modified — handwritten contract must not be overwritten.");
+  console.error("FATAL: schema.json was modified — the client owns this contract; the build must not overwrite the mirror.");
   process.exit(1);
 }
 
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 if (!schema.$id || !schema.definitions?.GoalAction) {
-  console.error("schema.json does not look like the handwritten ReactiveSkill contract.");
+  console.error("schema.json does not look like the client ReactiveSkill contract.");
   process.exit(1);
 }
 
@@ -43,4 +45,4 @@ for (const banned of ["readText", "setClipboard", "askAgent"]) {
   }
 }
 
-console.log("schema.json integrity OK (handwritten contract unchanged).");
+console.log("schema.json integrity OK (client contract mirror unchanged).");

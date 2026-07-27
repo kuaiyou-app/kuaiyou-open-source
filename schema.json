@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://kuaiyou.app/schemas/reactive-skill/v2.json",
   "title": "ReactiveSkill",
+  "$comment": "契约源头是快游大师客户端（Kotlin @Serializable 模型）。本文件随客户端 release 导出；kuaiyou-open-source/schema.json 是它的镜像，勿单独编辑。闭合枚举由 Gradle verifyMcpSkillSchema 与开源仓 scripts/check-enum-parity.mjs 双向校验。",
   "description": "快游大师 反应式技能 Schema v2（端上可执行动作契约）。本地 Agent 通过设备 MCP 拉取本 Schema，编排/升级技能后 POST 部署到 App。顶层为 ReactiveSkill；执行由引擎按屏幕状态驱动 goals，interrupts 为全局前置拦截。动作必须收敛到端上可执行列表（tap/typeText/swipe 等），不含执行期外联 LLM。MCP 导入的技能一律视为本地手工技能：不暴露内部助理归属字段。反序列化使用 kotlinx.serialization：判别字段 \"type\"=@SerialName；ignoreUnknownKeys=true。",
   "type": "object",
   "required": ["id", "name", "description", "goals"],
@@ -41,7 +42,7 @@
     "scanConfig": { "$ref": "#/definitions/ScanConfig" },
     "humanization": { "type": "object", "description": "拟人化执行配置，默认 OFF" },
     "returnToApp": { "type": "boolean", "default": false },
-    "debugStatus": { "type": "string", "enum": ["INCOMPLETE", "PENDING_TEST", "TESTED"], "default": "INCOMPLETE" },
+    "debugStatus": { "type": "string", "enum": ["SUCCESS", "PARTIAL_SUCCESS", "INCOMPLETE"], "default": "INCOMPLETE", "description": "对齐客户端 DebugStatus；INCOMPLETE 表示尚未通过调试，不参与执行" },
     "createdAt": { "type": "integer" },
     "updatedAt": { "type": "integer" }
   },

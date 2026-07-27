@@ -1,6 +1,6 @@
 /**
  * Project Zod ReactiveSkillSchema to JSON Schema for diagnostics only.
- * NEVER overwrites the handwritten root schema.json (LLM/App contract).
+ * NEVER overwrites root schema.json, which mirrors the client-exported contract.
  */
 import { z } from "zod";
 import { mkdirSync, writeFileSync } from "fs";

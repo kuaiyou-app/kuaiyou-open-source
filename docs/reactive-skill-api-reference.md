@@ -1,6 +1,6 @@
 # ReactiveSkill API 协议参考手册（Schema v2）
 
-`ReactiveSkill` 是快游大师的反应式自动化描述协议。权威契约是仓库根目录的手写 [`schema.json`](../schema.json)，与 App 端 `GoalAction` / `ReactiveSkill` 模型对齐；MCP 的 Zod 校验是该契约的投影。
+`ReactiveSkill` 是快游大师的反应式自动化描述协议。**契约源头是 App 客户端**（Kotlin `@Serializable` 模型：`GoalAction` / `ReactiveSkill`）：客户端 release 时由 Gradle `generateMcpSkillSchema` 导出 Schema，仓库根目录的 [`schema.json`](../schema.json) 是它的镜像，请勿单独编辑。MCP 的 Zod 校验是该契约的投影，闭合枚举由 `scripts/check-enum-parity.mjs` 校验与 `schema.json` 一致。
 
 > 本文档仅描述 **v2** 词表。旧文档中的 `ClickAction`、`TextTargetSelector`、`AllGoalsComplete`、`Timeout`+`timeoutMs`、`agentId` 等 **一律无效**。
 
