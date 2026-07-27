@@ -39,7 +39,7 @@
 - 🎯 **基于无障碍树的语义点击**：抛弃脆弱的绝对坐标，支持直接通过 `semantic`（如“去签到按钮”）描述目标，系统底层结合无障碍 (Accessibility) 树和端侧小模型进行精准定位与点击。
 - 📏 **坐标百分比与相对滑动**：针对不同分辨率的设备，支持 `startXPct` 等百分比坐标；支持在一个特定 UI 面板（如评论区）内进行精准的相对滑动操作。
 - 🔒 **严格的本地化执行**：全面移除对外部大模型运行期调用的依赖（剔除了旧版的 `agentId` 字段，严格拦截 `askAgent` 动作），所有的动作指令（`tap`, `swipe`, `launchApp`, `delay`）都在设备本地极速闭环，大幅提升运行流畅度并节省云端 Token。
-- 🤖 **大模型原生的 MCP 集成**：通过我们提供的 `autoace-cli`，AI 可在 PC 编排端随时提取 Android 屏幕结构、计算中心点坐标，并秒级下发调试脚本，实现完美的“PC 编排 - 端侧运行”联调闭环。
+- 🤖 **大模型原生的 MCP 集成**：通过我们提供的 `autoace-cli`，AI 可在 PC 编排端随时提取 Android 屏幕结构、计算中心点坐标，并秒级下发技能，实现“PC 编排 - 端侧运行”联调闭环。
 
 ---
 
@@ -47,7 +47,7 @@
 
 | 目录/模块 | 描述 |
 | --- | --- |
-| **[autoace-cli](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端（MCP 协议）。打通 PC 编排与 Android 实机联调，向 AI 暴露节点提取、截图和脚本下发能力。 |
+| **[autoace-cli](./kuaiyou-mcp-server/)** | 电脑端 MCP CLI。打通 PC 编排与 Android 实机联调，向 AI 暴露看屏、校验与技能下发能力。 |
 | **[schema.json](./schema.json)** | 手写权威 `ReactiveSkill` JSON Schema（LLM/App 契约）。V2 不含 `agentId`，也不声明已移除的 `readText`/`setClipboard`。 |
 | **[docs](./docs/)** | 详尽的开发者指南，包含 V2 技能编写与联调手册、避坑指南等。 |
 | **[examples](./examples/)** | 规范的 V2 技能脚本示例，包含无限刷视频、智能互动等。 |
