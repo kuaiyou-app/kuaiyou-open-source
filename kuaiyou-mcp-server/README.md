@@ -33,7 +33,8 @@ autoace-cli
 局域网示例：
 
 ```bash
-KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
+# 端口与配对码每次开启 MCP 服务都会变，请照 App 当前显示的值填写
+KUAIYOU_DEVICE_IP=192.168.1.100:41899 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
 ```
 
 ## License

@@ -180,3 +180,27 @@ test("device tools report a missing address rather than an unsupported build", a
     assert.doesNotMatch(text, /not available yet on this App build/, `${name}: ${text}`);
   }
 });
+
+// Regression: a device that answered and refused (401/403/404/4xx) used to be
+// reported as "Failed to ... over the LAN HTTP channel. Check that: MCP switch
+// is on; same network; ...", which sent people debugging their Wi-Fi when the
+// real cause was a rejected skill or a stale pairing code. Point the client at
+// a host that answers HTTP but has no MCP routes and assert the wording.
+test("device rejections are not reported as channel failures", async () => {
+  const transport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: { ...process.env, KUAIYOU_DEVICE_IP: "example.com:80", KUAIYOU_MCP_PAIRING_CODE: "000000" },
+  });
+  const probe = new Client({ name: "reject-probe", version: "1.0.0" }, { capabilities: {} });
+  await probe.connect(transport);
+  try {
+    const res = await probe.callTool({ name: "get_ui_tree", arguments: {} });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true);
+    assert.match(text, /The device refused to fetch the screen nodes \(HTTP \d+\)/, text);
+    assert.doesNotMatch(text, /phone and computer are on the same network/, text);
+  } finally {
+    await probe.close();
+  }
+});

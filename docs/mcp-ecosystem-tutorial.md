@@ -60,7 +60,7 @@ npm install -g autoace-cli
       "command": "npx",
       "args": ["-y", "autoace-cli"],
       "env": {
-        "KUAIYOU_DEVICE_IP": "192.168.1.100:3847",
+        "KUAIYOU_DEVICE_IP": "192.168.1.100:41899",
         "KUAIYOU_MCP_PAIRING_CODE": "482917"
       }
     }
@@ -76,7 +76,12 @@ npm install -g autoace-cli
 
 在 `~/.codex/config.toml`（或当前 Codex 版本的 MCP 配置处）注册同等 MCP：command=`npx`，args=`["-y","autoace-cli"]`，并写入上述 env。
 
-> `KUAIYOU_DEVICE_IP` 支持 `ip` 或 `ip:port`（默认端口 `8080`）。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络；App 重启后地址与配对码可能变化，需重新填写。
+> **端口与配对码每次开启 MCP 服务都会变**：端口由系统临时分配，配对码是新生成的 6 位数字。
+> 因此 `KUAIYOU_DEVICE_IP` **必须带端口**（`ip:port`），并且每次重开服务后都要按 App 上的新值重填这两个环境变量；
+> 点击 App 里的「MCP 服务」条目可一次性复制完整连接信息。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。
+> 当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。
+>
+> 配对码连续输错会触发设备端退避（返回 `429` 并带 `Retry-After`），等提示的秒数后用当前配对码重试即可。
 
 ---
 

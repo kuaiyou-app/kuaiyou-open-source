@@ -77,6 +77,48 @@ function deviceHttpFailure(what: string, logs: string) {
   };
 }
 
+/**
+ * The device answered, it just refused the request. Reporting these as channel
+ * problems sent people checking their Wi-Fi when the actual cause was a skill
+ * the App rejected, an expired pairing code, or a route the build lacks.
+ */
+function deviceRejected(what: string, status: number, body: string, logs: string) {
+  const hint =
+    status === 401
+      ? `The pairing code was rejected. It is regenerated every time the MCP service restarts — copy the current one from the App.`
+      : status === 403
+        ? `The device refused the request origin or host. Point KUAIYOU_DEVICE_IP at the exact address the App shows.`
+        : status === 404
+          ? `The device has no such route or resource (an older App build, or the skill id does not exist).`
+          : status === 429
+            ? `Too many failed pairing-code attempts; the device is backing off. Wait for the Retry-After window, then use the current code.`
+            : status >= 500
+              ? `The App hit an internal error handling the request; check the device logs.`
+              : `The device rejected the request content. The reason from the device is in the response below.`;
+  const detail = body.trim() ? `\n\nDevice response:\n${body.slice(0, 2000)}` : "";
+  return {
+    content: [
+      {
+        type: "text",
+        text: `The device refused to ${what} (HTTP ${status}).\n${hint}${detail}\n\nLogs:\n${logs}`,
+      },
+    ],
+    isError: true,
+  };
+}
+
+/** Same split as deviceGetFailure, for the POST tools. */
+function devicePostFailure(
+  toolName: string,
+  what: string,
+  res: { status: number; body: string; logs: string }
+) {
+  if (!getDeviceIp()) return missingDeviceIp(toolName, res.logs);
+  if (res.status === 404) return deviceRejected(what, 404, res.body, res.logs);
+  if (res.status > 0) return deviceRejected(what, res.status, res.body, res.logs);
+  return deviceHttpFailure(what, res.logs);
+}
+
 function toolNotImplemented(name: string, hint: string) {
   return {
     content: [
@@ -303,6 +345,8 @@ async function deviceApiGet(
 function deviceGetFailure(toolName: string, what: string, res: { logs: string; status?: number }) {
   if (!getDeviceIp()) return missingDeviceIp(toolName, res.logs);
   if (res.status === 404) return toolNotImplemented(toolName, res.logs);
+  // A status at all means the device answered; only a missing status is a transport failure.
+  if (res.status !== undefined) return deviceRejected(what, res.status, "", res.logs);
   return deviceHttpFailure(what, res.logs);
 }
 
@@ -394,6 +438,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
         if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
+        // The device answered — this is a rejection, not a broken channel.
+        return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
       } catch (e: any) {
         logs += `HTTP push failed: ${e.message}\n`;
       }
@@ -424,6 +470,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       } catch (e: any) {
         logs += `HTTP fetch failed: ${e.message}\n`;
+        // A status means the device answered and refused; no status means transport.
+        if (e instanceof HttpStatusError) {
+          return deviceRejected("fetch the screen nodes", e.status, "", logs);
+        }
       }
 
       return deviceHttpFailure("fetch the screen nodes", logs);
@@ -451,6 +501,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       } catch (e: any) {
         logs += `HTTP fetch failed: ${e.message}\n`;
+        // A status means the device answered and refused; no status means transport.
+        if (e instanceof HttpStatusError) {
+          return deviceRejected("capture the screenshot", e.status, "", logs);
+        }
       }
 
       return deviceHttpFailure("capture the screenshot", logs);
@@ -471,10 +525,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const res = await deviceApiPost("/api/mcp/skills/delete", { skillId });
       if (!res.ok) {
-        return {
-          content: [{ type: "text", text: `delete_skill failed.\n${res.logs}${res.body}` }],
-          isError: true,
-        };
+        return devicePostFailure("delete_skill", "delete the skill", res);
       }
       return { content: [{ type: "text", text: res.body || `Deleted ${skillId}` }] };
     }
@@ -486,10 +537,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const res = await deviceApiPost("/api/mcp/run", { skillId });
       if (!res.ok) {
-        return {
-          content: [{ type: "text", text: `run_skill failed.\n${res.logs}${res.body}` }],
-          isError: true,
-        };
+        return devicePostFailure("run_skill", "start the skill", res);
       }
       return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
     }
@@ -498,10 +546,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { skillId } = (request.params.arguments as any) || {};
       const res = await deviceApiPost("/api/mcp/stop", skillId ? { skillId } : {});
       if (!res.ok) {
-        return {
-          content: [{ type: "text", text: `stop_skill failed.\n${res.logs}${res.body}` }],
-          isError: true,
-        };
+        return devicePostFailure("stop_skill", "stop the running skill", res);
       }
       return { content: [{ type: "text", text: res.body || "Stop requested" }] };
     }

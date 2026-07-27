@@ -24,6 +24,9 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
    - `KUAIYOU_DEVICE_IP`
    - `KUAIYOU_MCP_PAIRING_CODE`
 3. Phone and computer must be on the same network — the LAN HTTP channel is the only transport.
+4. The port and pairing code are regenerated every time the MCP service is switched on, so
+   `KUAIYOU_DEVICE_IP` must include the port and both values need re-entering after a restart.
+   Repeated wrong pairing codes make the device back off with `429` + `Retry-After`.
 
 ## Preferred flow (MCP)
 
