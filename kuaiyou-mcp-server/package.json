@@ -18,10 +18,30 @@
     "prepack": "npm run build",
     "start": "node build/index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "android",
+    "automation",
+    "kuaiyou",
+    "reactive-skill"
+  ],
+  "author": "kuaiyou-app",
   "license": "Apache-2.0",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuaiyou-app/kuaiyou-open-source.git",
+    "directory": "kuaiyou-mcp-server"
+  },
+  "homepage": "https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/kuaiyou-mcp-server",
+  "bugs": {
+    "url": "https://github.com/kuaiyou-app/kuaiyou-open-source/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=18",
     "npm": ">=9"
