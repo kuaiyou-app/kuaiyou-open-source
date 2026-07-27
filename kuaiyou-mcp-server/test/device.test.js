@@ -38,3 +38,48 @@ test("sniffImageMime detects png and jpeg", () => {
   assert.equal(sniffImageMime(png), "image/png");
   assert.equal(sniffImageMime(jpeg), "image/jpeg");
 });
+
+test("getPackageName falls back to the shipping applicationId", () => {
+  const { getPackageName, DEFAULT_APP_PACKAGE } = require("../build/device.js");
+  const previous = process.env.KUAIYOU_APP_PACKAGE;
+  try {
+    delete process.env.KUAIYOU_APP_PACKAGE;
+    assert.equal(getPackageName(), "com.kuaiyou.automator.clicker");
+    assert.equal(getPackageName(), DEFAULT_APP_PACKAGE);
+
+    // Blank / whitespace-only overrides must not produce an empty path segment.
+    process.env.KUAIYOU_APP_PACKAGE = "   ";
+    assert.equal(getPackageName(), DEFAULT_APP_PACKAGE);
+  } finally {
+    if (previous === undefined) delete process.env.KUAIYOU_APP_PACKAGE;
+    else process.env.KUAIYOU_APP_PACKAGE = previous;
+  }
+});
+
+test("getPackageName accepts suffixed test builds and rejects injection", () => {
+  const { getPackageName } = require("../build/device.js");
+  const previous = process.env.KUAIYOU_APP_PACKAGE;
+  try {
+    process.env.KUAIYOU_APP_PACKAGE = "com.kuaiyou.automator.clicker.test";
+    assert.equal(getPackageName(), "com.kuaiyou.automator.clicker.test");
+
+    // Anything that could escape the /sdcard/Android/data/<pkg>/files path or
+    // smuggle extra adb arguments must be rejected outright.
+    for (const bad of [
+      "../../etc",
+      "com.kuaiyou/../../root",
+      "com.kuaiyou clicker",
+      "com.kuaiyou;rm -rf /",
+      "com.kuaiyou/files",
+      "nodots",
+      "com..kuaiyou",
+      ".com.kuaiyou",
+    ]) {
+      process.env.KUAIYOU_APP_PACKAGE = bad;
+      assert.throws(() => getPackageName(), /Invalid KUAIYOU_APP_PACKAGE/, `expected rejection: ${bad}`);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.KUAIYOU_APP_PACKAGE;
+    else process.env.KUAIYOU_APP_PACKAGE = previous;
+  }
+});
