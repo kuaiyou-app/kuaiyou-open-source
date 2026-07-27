@@ -69,7 +69,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "validate_kuaiyou_skill",
         description:
-          "Validate a JSON string or .json file path against the Kuaiyou ReactiveSkill schema (Zod + business lint).",
+          "Validate a JSON string or .json file path against the Kuaiyou skill schema (Zod + business lint).",
         inputSchema: {
           type: "object",
           properties: {
@@ -84,7 +84,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Validate then deploy a ReactiveSkill JSON to a connected Android device via HTTP LAN (fallback to ADB public Download path).",
+          "Validate then deploy a skill JSON to a connected Android device via HTTP LAN (fallback to ADB public Download path).",
         inputSchema: {
           type: "object",
           properties: {

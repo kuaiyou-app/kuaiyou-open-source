@@ -46,9 +46,10 @@
 | --- | --- |
 | **[autoace-cli](./kuaiyou-mcp-server/)** | 电脑端 MCP CLI（npm 包名 `autoace-cli`）。 |
 | **[schema.json](./schema.json)** | 技能 JSON 契约（权威 Schema）。 |
-| **[docs](./docs/)** | 编写与联调手册。 |
-| **[examples](./examples/)** | 技能示例。 |
-| **[skills](./skills/) / [agent-skills](./agent-skills/)** | 社区技能与 Agent 提示词。 |
+| **[docs](./docs/)** | 编写与联调手册；完整接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md)。 |
+| **[examples](./examples/)** | 技能示例 JSON。 |
+| **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。 |
+| **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（Claude Code `/autoace`、Codex `$autoace`）。 |
 | **[kuaiyou-website](https://github.com/kuaiyou-app/kuaiyou-website)** | 独立开源官网（GitHub Pages）。 |
 
 ---
@@ -73,6 +74,8 @@ KUAIYOU_ADB_SERIAL=<serial> npx -y autoace-cli
 ```
 
 也可：`npm install -g autoace-cli`。
+
+推荐同时安装 Agent Skill **`autoace`**（见 [教程](./docs/mcp-ecosystem-tutorial.md)），在 Claude Code 用 `/autoace`，在 Codex 用 `$autoace`。
 
 > 配对码通过 `Authorization: Bearer` 发送（兼容旧变量名 `KUAIYOU_MCP_TOKEN`）。
 
