@@ -19,10 +19,11 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
 
 ## Prerequisites
 
-1. Phone: Kuaiyou Master → Settings → Advanced → **MCP 服务** on; note `IP:port` + pairing code.
-2. Computer: Node.js ≥ 18; MCP client configured to run `npx -y autoace-cli` with:
+1. Phone: Kuaiyou Master → Settings → Advanced → **MCP 服务** on. The pairing code is masked by default; click the service row to copy the complete stdio configuration.
+2. Computer: Node.js ≥ 18 and npm ≥ 9; register an MCP server named `autoace` with `command=npx`, `args=["-y","autoace-cli"]`, and the copied:
    - `KUAIYOU_DEVICE_IP`
    - `KUAIYOU_MCP_PAIRING_CODE`
+   Prefer user/local MCP configuration. Never write the pairing code into the repository, logs, docs, or Git commits.
 3. Phone and computer must be on the same network — the LAN HTTP channel is the only transport.
 4. The port and pairing code are regenerated every time the MCP service is switched on, so
    `KUAIYOU_DEVICE_IP` must include the port and both values need re-entering after a restart.
