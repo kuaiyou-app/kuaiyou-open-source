@@ -1,10 +1,15 @@
-import { execFile, spawn } from "child_process";
-
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
-const DEFAULT_ADB_TIMEOUT_MS = 15000;
-// Guardrail for buffered adb stdout (uiautomator dumps, etc.). Screenshots use
-// the streaming path below and are not subject to this.
-const DEFAULT_ADB_MAX_BUFFER = 16 * 1024 * 1024;
+
+/** Non-2xx response. Carries the status so callers can tell a missing route
+ *  (404) apart from an unreachable device or a rejected pairing code. */
+export class HttpStatusError extends Error {
+  readonly status: number;
+  constructor(status: number, statusText: string) {
+    super(`HTTP ${status} ${statusText}`);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
 
 export class TimeoutError extends Error {
   constructor(message: string) {
@@ -19,39 +24,13 @@ function authHeaders(): Record<string, string> {
   return code ? { Authorization: `Bearer ${code}` } : {};
 }
 
-function adbPrefix(): string[] {
-  const serial = process.env.KUAIYOU_ADB_SERIAL;
-  return serial ? ["-s", serial] : [];
-}
-
-// Android applicationId of the Kuaiyou Master App. Used to build the
-// app-specific external files path for the ADB import fallback
-// (/sdcard/Android/data/<pkg>/files), which the App can read under
-// scoped storage on Android 11+.
-// Override for internal test builds, which append an applicationIdSuffix.
-export const DEFAULT_APP_PACKAGE = "com.kuaiyou.automator.clicker";
-const APP_PACKAGE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
-
-export function getPackageName(): string {
-  const override = process.env.KUAIYOU_APP_PACKAGE?.trim();
-  if (!override) return DEFAULT_APP_PACKAGE;
-  // Reject anything that is not a plain Java package name so the value can
-  // never inject extra path segments or arguments into the adb invocation.
-  if (!APP_PACKAGE_PATTERN.test(override)) {
-    throw new Error(
-      `Invalid KUAIYOU_APP_PACKAGE: ${override}. Expected a package name like ${DEFAULT_APP_PACKAGE}.`
-    );
-  }
-  return override;
-}
-
 // fetch() whose timeout covers the full response *including body consumption*.
 // The AbortController is only cleared after the body is read, unlike a naive
 // timeout that fires solely around the headers.
 export async function httpGetText(url: string, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS): Promise<string> {
   return withAbort(timeoutMs, async (signal) => {
     const res = await fetch(url, { signal, headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new HttpStatusError(res.status, res.statusText);
     return res.text();
   });
 }
@@ -59,7 +38,7 @@ export async function httpGetText(url: string, timeoutMs = DEFAULT_HTTP_TIMEOUT_
 export async function httpGetBuffer(url: string, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS): Promise<Buffer> {
   return withAbort(timeoutMs, async (signal) => {
     const res = await fetch(url, { signal, headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new HttpStatusError(res.status, res.statusText);
     return Buffer.from(await res.arrayBuffer());
   });
 }
@@ -116,57 +95,6 @@ async function withAbort<T>(timeoutMs: number, fn: (signal: AbortSignal) => Prom
   } finally {
     clearTimeout(timer);
   }
-}
-
-// adb invocation with an explicit timeout (the process is killed on expiry) and
-// a bounded stdout buffer. No shell: args are passed as an array.
-export function runAdb(
-  args: string[],
-  opts: { timeoutMs?: number; maxBuffer?: number } = {}
-): Promise<{ stdout: string; stderr: string }> {
-  const { timeoutMs = DEFAULT_ADB_TIMEOUT_MS, maxBuffer = DEFAULT_ADB_MAX_BUFFER } = opts;
-  const fullArgs = [...adbPrefix(), ...args];
-  return new Promise((resolve, reject) => {
-    execFile("adb", fullArgs, { timeout: timeoutMs, maxBuffer }, (error, stdout, stderr) => {
-      if (error) {
-        if ((error as any).killed && (error as any).signal === "SIGTERM") {
-          reject(new TimeoutError(`adb ${args[0]} timed out after ${timeoutMs}ms`));
-        } else {
-          reject(error);
-        }
-        return;
-      }
-      resolve({ stdout: stdout.toString(), stderr: stderr.toString() });
-    });
-  });
-}
-
-// Stream the screenshot via `adb exec-out` so large PNGs are not truncated by
-// exec's default maxBuffer and raw bytes are not mangled by a shell. Killed on timeout.
-export function captureScreencap(timeoutMs = DEFAULT_ADB_TIMEOUT_MS): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("adb", [...adbPrefix(), "exec-out", "screencap", "-p"]);
-    const chunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new TimeoutError(`adb screencap timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
-    child.stderr.on("data", (chunk) => errChunks.push(chunk));
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve(Buffer.concat(chunks));
-      } else {
-        reject(new Error(Buffer.concat(errChunks).toString() || `adb exited with code ${code}`));
-      }
-    });
-  });
 }
 
 export function sniffImageMime(buffer: Buffer): string {

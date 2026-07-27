@@ -6,23 +6,16 @@ import {
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { XMLParser } from "fast-xml-parser";
 import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
 import * as dotenv from "dotenv";
-import crypto from "crypto";
 import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
 import {
-  runAdb,
-  captureScreencap,
+  HttpStatusError,
   httpGetText,
   httpGetBuffer,
   httpPostJson,
   httpPostForm,
-  withDeviceLock,
   sniffImageMime,
-  getPackageName,
 } from "./device.js";
 
 dotenv.config();
@@ -35,7 +28,7 @@ const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const server = new Server(
   {
     name: "autoace-cli",
-    version: "1.0.1",
+    version: "1.0.2",
   },
   {
     capabilities: {
@@ -48,6 +41,41 @@ const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
 const getDeviceBaseUrl = (ip: string) => {
   return /:\d+$/.test(ip) ? `http://${ip}` : `http://${ip}:8080`;
 };
+
+// The CLI talks to the device over the LAN HTTP channel only. These two
+// helpers keep the "no device" and "device unreachable" messages consistent
+// across every tool instead of repeating the guidance inline.
+function missingDeviceIp(toolName: string, logs = "") {
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `${toolName} needs a device address.\n` +
+          `Set KUAIYOU_DEVICE_IP to the "ip:port" shown by the App under ` +
+          `设置 → 高级设置 → MCP 服务, and KUAIYOU_MCP_PAIRING_CODE to the pairing code.` +
+          (logs ? `\n\nLogs:\n${logs}` : ""),
+      },
+    ],
+    isError: true,
+  };
+}
+
+function deviceHttpFailure(what: string, logs: string) {
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `Failed to ${what} over the LAN HTTP channel.\n` +
+          `Check that: the App's MCP 服务 switch is on; phone and computer are on the same network; ` +
+          `KUAIYOU_DEVICE_IP matches the address the App shows (it changes when the App restarts); ` +
+          `and KUAIYOU_MCP_PAIRING_CODE matches the current pairing code.\n\nLogs:\n${logs}`,
+      },
+    ],
+    isError: true,
+  };
+}
 
 function toolNotImplemented(name: string, hint: string) {
   return {
@@ -85,7 +113,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Validate then deploy a skill JSON to a connected Android device via HTTP LAN (fallback to ADB public Download path).",
+          "Validate then deploy a skill JSON to the device over the LAN HTTP channel (requires App /api/mcp/import).",
         inputSchema: {
           type: "object",
           properties: {
@@ -104,7 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_ui_tree",
         description:
-          "Fetch the current UI node tree from the connected Android device via HTTP (fallback to ADB uiautomator with hierarchy).",
+          "Fetch the current UI node tree from the device over the LAN HTTP channel (requires App /api/mcp/ui_tree).",
         inputSchema: {
           type: "object",
           properties: {},
@@ -113,7 +141,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "capture_screenshot",
         description:
-          "Fetch the current screen screenshot from the connected Android device via HTTP (fallback to ADB screencap).",
+          "Fetch the current screen screenshot from the device over the LAN HTTP channel (requires App /api/mcp/screenshot).",
         inputSchema: {
           type: "object",
           properties: {},
@@ -221,47 +249,6 @@ function enhanceUiNodes(data: any): any {
   return data;
 }
 
-function xmlNodeToTree(node: any): any {
-  if (!node) return null;
-  if (Array.isArray(node)) {
-    return node.map(xmlNodeToTree).filter(Boolean);
-  }
-
-  const childrenRaw = node.node;
-  const children = childrenRaw ? xmlNodeToTree(childrenRaw) : undefined;
-  const childList = children === undefined ? undefined : Array.isArray(children) ? children : [children];
-
-  const info: any = {};
-  if (node["@_class"]) info.class = node["@_class"];
-  if (node["@_text"]) info.text = node["@_text"];
-  if (node["@_content-desc"]) info["content-desc"] = node["@_content-desc"];
-  if (node["@_resource-id"]) {
-    info["resource-id"] = node["@_resource-id"];
-    info.viewId = node["@_resource-id"];
-  }
-  if (node["@_package"]) info.package = node["@_package"];
-  if (node["@_bounds"]) {
-    info.bounds =
-      typeof node["@_bounds"] === "string" ? parseBoundsStr(node["@_bounds"]) : node["@_bounds"];
-  }
-  if (node["@_clickable"] !== undefined) info.clickable = node["@_clickable"] === "true";
-  if (node["@_scrollable"] !== undefined) info.scrollable = node["@_scrollable"] === "true";
-  if (node["@_enabled"] !== undefined) info.enabled = node["@_enabled"] === "true";
-  if (node["@_checked"] !== undefined) info.checked = node["@_checked"] === "true";
-  if (childList && childList.length > 0) info.children = childList;
-
-  const interesting =
-    info.clickable ||
-    info.text ||
-    info["content-desc"] ||
-    info.viewId ||
-    info.scrollable ||
-    (childList && childList.length > 0);
-  if (!interesting) {
-    return childList && childList.length === 1 ? childList[0] : childList && childList.length > 1 ? { children: childList } : null;
-  }
-  return info;
-}
 
 async function resolveSkillJsonInput(skillJson: string): Promise<string> {
   // Only treat as a file path when it looks like one and ends with .json.
@@ -289,7 +276,9 @@ async function resolveSkillJsonInput(skillJson: string): Promise<string> {
   }
 }
 
-async function deviceApiGet(pathname: string): Promise<{ ok: true; text: string } | { ok: false; logs: string }> {
+async function deviceApiGet(
+  pathname: string
+): Promise<{ ok: true; text: string } | { ok: false; logs: string; status?: number }> {
   const ip = getDeviceIp();
   let logs = "";
   if (!ip) {
@@ -302,8 +291,19 @@ async function deviceApiGet(pathname: string): Promise<{ ok: true; text: string 
     return { ok: true, text };
   } catch (e: any) {
     logs += `HTTP failed: ${e.message}\n`;
-    return { ok: false, logs };
+    return { ok: false, logs, status: e instanceof HttpStatusError ? e.status : undefined };
   }
+}
+
+/**
+ * A 404 means the App build genuinely lacks the route; anything else (timeout,
+ * connection refused, 401) is a channel/config problem. Reporting a timeout as
+ * "not available on this App build" sent people chasing the wrong thing.
+ */
+function deviceGetFailure(toolName: string, what: string, res: { logs: string; status?: number }) {
+  if (!getDeviceIp()) return missingDeviceIp(toolName, res.logs);
+  if (res.status === 404) return toolNotImplemented(toolName, res.logs);
+  return deviceHttpFailure(what, res.logs);
 }
 
 async function deviceApiPost(pathname: string, body: object): Promise<{ ok: boolean; status: number; body: string; logs: string }> {
@@ -372,197 +372,73 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         logs += `Warnings:\n${lint.warnings.map((w) => `- ${w}`).join("\n")}\n\n`;
       }
 
-      if (ip) {
-        const baseUrl = getDeviceBaseUrl(ip);
-        logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
-        try {
-          let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
-          // Backward-compatible fallback for older App builds that still expect form posts.
-          if (response.status === 415 || response.status === 400) {
-            const formData = new URLSearchParams();
-            formData.append("postData", processedJson);
-            response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
-          }
+      if (!ip) return missingDeviceIp("push_reactive_skill", logs);
 
-          if (response.ok) {
-            logs += `HTTP push successful!\n`;
-            if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-            return {
-              content: [{ type: "text", text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
-            };
-          } else {
-            logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
-            if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-          }
-        } catch (e: any) {
-          logs += `HTTP push failed: ${e.message}\n`;
+      const baseUrl = getDeviceBaseUrl(ip);
+      logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
+      try {
+        let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
+        // Backward-compatible fallback for older App builds that still expect form posts.
+        if (response.status === 415 || response.status === 400) {
+          const formData = new URLSearchParams();
+          formData.append("postData", processedJson);
+          response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
         }
+
+        if (response.ok) {
+          logs += `HTTP push successful!\n`;
+          if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
+          return {
+            content: [{ type: "text", text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
+          };
+        }
+        logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
+        if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
+      } catch (e: any) {
+        logs += `HTTP push failed: ${e.message}\n`;
       }
 
-      logs += `\nFalling back to ADB...\n`;
-      return withDeviceLock(async () => {
-        let tempDir: string | undefined;
-        try {
-          tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuaiyou-"));
-          const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
-          await fs.writeFile(tempPath, processedJson, "utf8");
-
-          // Prefer app-specific external files (readable by the app under scoped storage).
-          // /sdcard/Download/kuaiyou is NOT reliably readable by the app on Android 11+.
-          const packageName = getPackageName();
-          await runAdb(["shell", "mkdir", "-p", `/sdcard/Android/data/${packageName}/files`]);
-          const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
-
-          const { stdout: pushOut, stderr: pushErr } = await runAdb(["push", tempPath, targetPath]);
-          logs += `[ADB PUSH]\n${pushOut}\n${pushErr}\n`;
-
-          const { stdout: chmodOut, stderr: chmodErr } = await runAdb(["shell", "chmod", "666", targetPath]);
-          logs += `[ADB CHMOD]\n${chmodOut}\n${chmodErr}\n`;
-
-          const deepLink = `kuaiyou://import_skill?path=${encodeURIComponent(targetPath)}`;
-          const { stdout: amOut, stderr: amErr } = await runAdb([
-            "shell",
-            "am",
-            "start",
-            "-a",
-            "android.intent.action.VIEW",
-            "-d",
-            deepLink,
-          ]);
-          logs += `[ADB AM START]\n${amOut}\n${amErr}\n`;
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Successfully deployed skill ${skillId} to device via ADB!\n\nLogs:\n${logs}`,
-              },
-            ],
-          };
-        } catch (e: any) {
-          logs += `ADB deploy failed: ${e.message}\n`;
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
-              },
-            ],
-            isError: true,
-          };
-        } finally {
-          if (tempDir) {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-          }
-        }
-      });
+      return deviceHttpFailure("deploy the skill", logs);
     }
 
     case "get_ui_tree": {
       const ip = getDeviceIp();
       let logs = "";
 
-      if (ip) {
-        const baseUrl = getDeviceBaseUrl(ip);
-        logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
+      if (!ip) return missingDeviceIp("get_ui_tree", logs);
+
+      const baseUrl = getDeviceBaseUrl(ip);
+      logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
+      try {
+        const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
         try {
-          const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
-          try {
-            const parsedJson = JSON.parse(jsonText);
-            const enhancedJson = enhanceUiNodes(parsedJson);
-            return {
-              content: [{ type: "text", text: JSON.stringify(enhancedJson, null, 2) }],
-            };
-          } catch (e) {
-            return {
-              content: [{ type: "text", text: jsonText }],
-            };
-          }
-        } catch (e: any) {
-          logs += `HTTP fetch failed: ${e.message}\n`;
+          const parsedJson = JSON.parse(jsonText);
+          const enhancedJson = enhanceUiNodes(parsedJson);
+          return {
+            content: [{ type: "text", text: JSON.stringify(enhancedJson, null, 2) }],
+          };
+        } catch (e) {
+          return {
+            content: [{ type: "text", text: jsonText }],
+          };
         }
+      } catch (e: any) {
+        logs += `HTTP fetch failed: ${e.message}\n`;
       }
 
-      logs += `\nFalling back to ADB uiautomator dump...\n`;
-      const dumpFilename = `window_dump_${crypto.randomUUID()}.xml`;
-      const devicePath = `/sdcard/${dumpFilename}`;
-      const tempPath = path.join(os.tmpdir(), dumpFilename);
-
-      return withDeviceLock(async () => {
-        try {
-          let lastErr: any;
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              await runAdb(["shell", "uiautomator", "dump", devicePath]);
-              lastErr = null;
-              break;
-            } catch (e) {
-              lastErr = e;
-              await new Promise((r) => setTimeout(r, 400));
-            }
-          }
-          if (lastErr) throw lastErr;
-
-          await runAdb(["pull", devicePath, tempPath]);
-          const xmlData = await fs.readFile(tempPath, "utf8");
-
-          const parser = new XMLParser({
-            ignoreAttributes: false,
-            attributeNamePrefix: "@_",
-          });
-          const jsonObj = parser.parse(xmlData);
-          const tree = jsonObj.hierarchy ? xmlNodeToTree(jsonObj.hierarchy) : null;
-
-          return {
-            content: [{ type: "text", text: JSON.stringify(tree, null, 2) }],
-          };
-        } catch (e: any) {
-          logs += `ADB fetch failed: ${e.message}\n`;
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `Failed to fetch screen nodes.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
-              },
-            ],
-            isError: true,
-          };
-        } finally {
-          await runAdb(["shell", "rm", devicePath]).catch(() => {});
-          await fs.unlink(tempPath).catch(() => {});
-        }
-      });
+      return deviceHttpFailure("fetch the screen nodes", logs);
     }
 
     case "capture_screenshot": {
       const ip = getDeviceIp();
       let logs = "";
 
-      if (ip) {
-        const baseUrl = getDeviceBaseUrl(ip);
-        logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
-        try {
-          const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
-          const base64 = buffer.toString("base64");
-          return {
-            content: [
-              {
-                type: "image",
-                data: base64,
-                mimeType: sniffImageMime(buffer),
-              },
-            ],
-          };
-        } catch (e: any) {
-          logs += `HTTP fetch failed: ${e.message}\n`;
-        }
-      }
+      if (!ip) return missingDeviceIp("capture_screenshot", logs);
 
-      logs += `\nFalling back to ADB screencap...\n`;
+      const baseUrl = getDeviceBaseUrl(ip);
+      logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
       try {
-        const buffer = await captureScreencap();
+        const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
         const base64 = buffer.toString("base64");
         return {
           content: [
@@ -574,24 +450,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
       } catch (e: any) {
-        logs += `ADB screencap failed: ${e.message}\n`;
-        return {
-          content: [
-            {
-              type: "text",
-              text:
-                `Failed to capture screenshot.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}`,
-            },
-          ],
-          isError: true,
-        };
+        logs += `HTTP fetch failed: ${e.message}\n`;
       }
+
+      return deviceHttpFailure("capture the screenshot", logs);
     }
 
     case "list_skills": {
       const res = await deviceApiGet("/api/mcp/skills");
       if (!res.ok) {
-        return toolNotImplemented("list_skills", res.logs);
+        return deviceGetFailure("list_skills", "list the skills on the device", res);
       }
       return { content: [{ type: "text", text: res.text }] };
     }
@@ -645,7 +513,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const res = await deviceApiGet(`/api/mcp/status?skillId=${encodeURIComponent(skillId)}`);
       if (!res.ok) {
-        return toolNotImplemented("get_skill_status", res.logs);
+        return deviceGetFailure("get_skill_status", "read the skill status", res);
       }
       return { content: [{ type: "text", text: res.text }] };
     }
@@ -658,7 +526,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const q = new URLSearchParams({ skillId, limit: String(limit ?? 100) });
       const res = await deviceApiGet(`/api/mcp/logs?${q.toString()}`);
       if (!res.ok) {
-        return toolNotImplemented("get_execution_log", res.logs);
+        return deviceGetFailure("get_execution_log", "read the execution log", res);
       }
       return { content: [{ type: "text", text: res.text }] };
     }

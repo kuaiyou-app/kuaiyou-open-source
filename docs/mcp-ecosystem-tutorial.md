@@ -76,7 +76,7 @@ npm install -g autoace-cli
 
 在 `~/.codex/config.toml`（或当前 Codex 版本的 MCP 配置处）注册同等 MCP：command=`npx`，args=`["-y","autoace-cli"]`，并写入上述 env。
 
-> `KUAIYOU_DEVICE_IP` 支持 `ip` 或 `ip:port`（默认端口 `8080`）。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。无局域网时用 USB 调试；多设备设 `KUAIYOU_ADB_SERIAL`。
+> `KUAIYOU_DEVICE_IP` 支持 `ip` 或 `ip:port`（默认端口 `8080`）。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络；App 重启后地址与配对码可能变化，需重新填写。
 
 ---
 

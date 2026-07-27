@@ -60,7 +60,7 @@
 - 安装最新版 **「快游大师」**。
 - 打开 **设置 → 高级设置 → MCP 服务**，开启开关。
 - 副标题显示地址与配对码；**点击该条目**可复制给 Agent 的连接信息。
-- *(无局域网时可用 USB 调试；多设备时设置 `KUAIYOU_ADB_SERIAL`。)*
+- *(当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。)*
 
 ### 2. 配置 autoace-cli
 需 **Node.js ≥ 18**。npm 包名：**`autoace-cli`**。
@@ -68,9 +68,6 @@
 ```bash
 # 局域网（替换为 App 显示的 IP:端口 与配对码）
 KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
-
-# USB（可选指定序列号）
-KUAIYOU_ADB_SERIAL=<serial> npx -y autoace-cli
 ```
 
 也可：`npm install -g autoace-cli`。

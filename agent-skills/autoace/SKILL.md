@@ -23,7 +23,7 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
 2. Computer: Node.js ≥ 18; MCP client configured to run `npx -y autoace-cli` with:
    - `KUAIYOU_DEVICE_IP`
    - `KUAIYOU_MCP_PAIRING_CODE`
-3. Fallback without LAN: USB debugging + ADB (`KUAIYOU_ADB_SERIAL` if multiple devices).
+3. Phone and computer must be on the same network — the LAN HTTP channel is the only transport.
 
 ## Preferred flow (MCP)
 
@@ -37,25 +37,18 @@ Do **not** use removed fields/actions: `agentId`, `readText`, `setClipboard`, `a
 
 ## Fallback sync (no MCP push)
 
-If MCP push is unavailable, save the skill JSON and sync manually:
-
-### HTTP LAN
-
-```bash
-curl -X POST http://<DEVICE_IP>:8080/api/mcp/import \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data-urlencode "postData@/tmp/generated_skill.json"
-```
-
-### USB ADB
+If MCP push is unavailable, save the skill JSON and post it over the LAN yourself.
+The pairing code is required — without the `Authorization` header the device answers `401`.
 
 ```bash
-adb push /tmp/generated_skill.json /sdcard/Android/data/com.kuaiyou.automator.clicker/files/generated_skill.json
-adb shell "chmod 666 /sdcard/Android/data/com.kuaiyou.automator.clicker/files/generated_skill.json"
-adb shell am start -a android.intent.action.VIEW -d "kuaiyou://import_skill?path=/sdcard/Android/data/com.kuaiyou.automator.clicker/files/generated_skill.json"
+curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/import" \
+  -H "Authorization: Bearer <PAIRING_CODE>" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/generated_skill.json
 ```
 
-Replace the package name if the installed app id differs.
+A successful response looks like `{"status":"ok","skillId":"…","pendingConfirm":true}`;
+the phone then shows an import confirmation dialog.
 
 ## Example skill shape
 

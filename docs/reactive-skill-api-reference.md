@@ -136,7 +136,7 @@
 1. 用 MCP `validate_kuaiyou_skill`（或 CI `scripts/validate-skills.mjs`）校验
 2. `push_reactive_skill` **会先跑同一套校验**，失败则拒绝部署
 3. 局域网部署需配置 `KUAIYOU_MCP_PAIRING_CODE`（App 设置里复制的 6 位配对码；兼容旧名 `KUAIYOU_MCP_TOKEN`），请求带 `Authorization: Bearer <code>`
-4. ADB 兜底路径：`/sdcard/Download/kuaiyou/<skillId>.json` + deep link
+4. 部署仅通过局域网 HTTP：`POST /api/mcp/import`；手机端弹出确认框后才落盘（响应含 `pendingConfirm`）
 
 常见坑：
 
