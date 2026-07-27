@@ -29,6 +29,22 @@ jobs:
         run: npm run build
 
       - name: Publish to NPM
-        run: npm publish --access public
+        # The kuaiyou-app npm account has 2FA enabled, so NPM_TOKEN MUST be an
+        # "Automation" token (Access Tokens -> Generate New Token -> Automation).
+        # A "Publish" token still triggers an EOTP one-time-password prompt and
+        # will fail here. See docs/mcp-ecosystem-tutorial.md for manual release.
+        #
+        # Idempotent on purpose: a version may already be on npm from a manual
+        # release, and re-running this job (or cutting the GitHub Release after
+        # the fact) must not fail with EPUBLISHCONFLICT.
+        run: |
+          set -euo pipefail
+          name="$(node -p 'require("./package.json").name')"
+          version="$(node -p 'require("./package.json").version')"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already published; skipping."
+            exit 0
+          fi
+          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

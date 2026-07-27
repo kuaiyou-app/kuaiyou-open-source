@@ -11,6 +11,8 @@
 
 兼容旧命令名：`kuaiyou-mcp-server`（同一二进制）。
 
+> 旧 npm 包 `kuaiyou-mcp-server` 已废弃，不再更新。请改用 `autoace-cli`；`kuaiyou-mcp-server` 命令本身仍随本包安装，无需改动现有 MCP 配置。
+
 ## 要求
 
 - Node.js ≥ 18

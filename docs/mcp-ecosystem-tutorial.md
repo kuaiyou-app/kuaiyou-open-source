@@ -43,6 +43,8 @@ npm install -g autoace-cli
 
 包页：https://www.npmjs.com/package/autoace-cli
 
+> 旧 npm 包 `kuaiyou-mcp-server` 已废弃。如果你之前 `npm install -g kuaiyou-mcp-server`，请卸载后改装 `autoace-cli`；`kuaiyou-mcp-server` 命令仍由新包提供，现有 MCP 配置无需修改。
+
 ---
 
 ## 在各客户端配置 MCP（必做）

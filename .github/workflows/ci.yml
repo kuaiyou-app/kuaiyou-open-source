@@ -44,7 +44,7 @@ jobs:
       - name: Pack and smoke-test the published tarball
         run: |
           npm pack
-          tarball="$(ls kuaiyou-mcp-server-*.tgz)"
+          tarball="$(ls autoace-cli-*.tgz)"
           workdir="$(mktemp -d)"
           npm init -y --prefix "$workdir" >/dev/null 2>&1
           npm install --prefix "$workdir" "$PWD/$tarball" >/dev/null 2>&1
@@ -60,7 +60,7 @@ jobs:
             if (tools.length < 4) { throw new Error("expected >= 4 tools, got " + tools.length); }
             await client.close();
             console.log("smoke test ok: " + tools.length + " tools");
-          ' "$workdir/node_modules/kuaiyou-mcp-server/build/index.js"
+          ' "$workdir/node_modules/autoace-cli/build/index.js"
 
   skills:
     name: Skills
