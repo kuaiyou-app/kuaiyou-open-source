@@ -83,18 +83,21 @@ function deviceHttpFailure(what: string, logs: string) {
  * the App rejected, an expired pairing code, or a route the build lacks.
  */
 function deviceRejected(what: string, status: number, body: string, logs: string) {
+  // Keyed by status rather than a nested ternary: these hints get edited often
+  // and the ternary chain had already picked up a duplicated branch.
+  const hints: Record<number, string> = {
+    401: `The pairing code was rejected. It is regenerated every time the MCP service restarts — copy the current one from the App.`,
+    403: `The device refused the request origin or host. Point KUAIYOU_DEVICE_IP at the exact address the App shows.`,
+    404: `The device has no such route or resource (an older App build, or the skill id does not exist).`,
+    409: `The device refused to store this: usually the skill quota is full. Delete an unused skill (delete_skill) or upgrade, then push again.`,
+    429: `Too many failed pairing-code attempts; the device is backing off. Wait for the Retry-After window, then use the current code.`,
+    503: `The App cannot serve this right now — most often the accessibility permission is off, so the automation engine is not running.`,
+  };
   const hint =
-    status === 401
-      ? `The pairing code was rejected. It is regenerated every time the MCP service restarts — copy the current one from the App.`
-      : status === 403
-        ? `The device refused the request origin or host. Point KUAIYOU_DEVICE_IP at the exact address the App shows.`
-        : status === 404
-          ? `The device has no such route or resource (an older App build, or the skill id does not exist).`
-          : status === 429
-            ? `Too many failed pairing-code attempts; the device is backing off. Wait for the Retry-After window, then use the current code.`
-            : status >= 500
-              ? `The App hit an internal error handling the request; check the device logs.`
-              : `The device rejected the request content. The reason from the device is in the response below.`;
+    hints[status] ??
+    (status >= 500
+      ? `The App hit an internal error handling the request; check the device logs.`
+      : `The device rejected the request content. The reason from the device is in the response below.`);
   const detail = body.trim() ? `\n\nDevice response:\n${body.slice(0, 2000)}` : "";
   return {
     content: [
