@@ -44,7 +44,7 @@
 
 | 目录/模块 | 描述 |
 | --- | --- |
-| **[autoace-cli](./kuaiyou-mcp-server/)** | 电脑端 MCP CLI（npm 包名 `autoace-cli`）。 |
+| **[autoace-cli](./autoace-cli/)** | 电脑端 MCP CLI（npm 包名 `autoace-cli`）。 |
 | **[schema.json](./schema.json)** | 技能 JSON 契约（由客户端 release 导出，本仓库为镜像）。 |
 | **[docs](./docs/)** | 编写与联调手册；完整接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md)。 |
 | **[examples](./examples/)** | 技能示例 JSON。 |

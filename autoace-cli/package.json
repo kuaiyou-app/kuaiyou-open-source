@@ -1,6 +1,6 @@
 {
   "name": "autoace-cli",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "autoace-cli — MCP CLI for Kuaiyou Master Android automation. Lets Cursor/Claude control the phone and push skills.",
   "main": "./build/index.js",
   "bin": {
@@ -36,9 +36,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kuaiyou-app/kuaiyou-open-source.git",
-    "directory": "kuaiyou-mcp-server"
+    "directory": "autoace-cli"
   },
-  "homepage": "https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/kuaiyou-mcp-server",
+  "homepage": "https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/autoace-cli",
   "bugs": {
     "url": "https://github.com/kuaiyou-app/kuaiyou-open-source/issues"
   },

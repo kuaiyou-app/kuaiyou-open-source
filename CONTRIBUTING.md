@@ -7,7 +7,7 @@
 
 我们特别鼓励以下两种形式的贡献：
 
-- **核心工具贡献**：改进 `autoace-cli`（源码目录 `kuaiyou-mcp-server/`）的协议稳定性。
+- **核心工具贡献**：改进 `autoace-cli`（源码目录 `autoace-cli/`）的协议稳定性。
 - **开源技能库贡献**：您使用 AI 或手动编写的自动化 JSON（即「技能」），如果具有较好的普适性（如自动清理缓存、每日自动签到），欢迎提交到我们的官方技能中心，造福更多人！
 
 ---
@@ -63,9 +63,9 @@
    git checkout -b feature/123-your-amazing-feature develop
    ```
 5. **本地运行与测试**：
-   如果您修改了 `kuaiyou-mcp-server`，请确保在本地测试通过：
+   如果您修改了 `autoace-cli`，请确保在本地测试通过：
    ```bash
-   cd kuaiyou-mcp-server
+   cd autoace-cli
    npm install
    npm run build
    ```

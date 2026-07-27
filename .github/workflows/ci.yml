@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./kuaiyou-mcp-server
+        working-directory: ./autoace-cli
     strategy:
       matrix:
         node-version: [18.x, 20.x]
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-          cache-dependency-path: './kuaiyou-mcp-server/package-lock.json'
+          cache-dependency-path: './autoace-cli/package-lock.json'
 
       - name: Install dependencies
         run: npm ci
@@ -76,11 +76,11 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
-          cache-dependency-path: './kuaiyou-mcp-server/package-lock.json'
+          cache-dependency-path: './autoace-cli/package-lock.json'
 
       - name: Build the MCP server (provides the authoritative schema)
         run: npm ci && npm run build
-        working-directory: ./kuaiyou-mcp-server
+        working-directory: ./autoace-cli
 
       - name: Validate skills against schema and verify index contract
         run: node scripts/validate-skills.mjs

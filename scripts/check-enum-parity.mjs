@@ -15,7 +15,7 @@
  * either side fails CI instead of failing on someone's phone.
  *
  * Usage: node scripts/check-enum-parity.mjs
- * Requires: kuaiyou-mcp-server/build/zod-projected-schema.json (npm run build:schema)
+ * Requires: autoace-cli/build/zod-projected-schema.json (npm run build:schema)
  */
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -25,7 +25,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const schemaPath = join(repoRoot, "schema.json");
 const projectionPath = join(
   repoRoot,
-  "kuaiyou-mcp-server",
+  "autoace-cli",
   "build",
   "zod-projected-schema.json"
 );
@@ -37,7 +37,7 @@ for (const [label, p] of [
   if (!existsSync(p)) {
     console.error(`Missing ${label}: ${p}`);
     if (p === projectionPath) {
-      console.error("Run: cd kuaiyou-mcp-server && npm run build:schema");
+      console.error("Run: cd autoace-cli && npm run build:schema");
     }
     process.exit(1);
   }
@@ -109,7 +109,7 @@ if (problems.length) {
   console.error(`Enum parity FAILED (${problems.length}/${checked} field(s) disagree):`);
   for (const p of problems) console.error(`  - ${p}`);
   console.error(
-    "\nThe App is the contract owner. Fix schema.json to match the App enums, then mirror the change in kuaiyou-mcp-server/src/reactive-skill-schema.ts."
+    "\nThe App is the contract owner. Fix schema.json to match the App enums, then mirror the change in autoace-cli/src/reactive-skill-schema.ts."
   );
   process.exit(1);
 }
