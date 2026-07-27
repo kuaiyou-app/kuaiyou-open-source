@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./kuaiyou-mcp-server
+        working-directory: ./autoace-cli
 
     steps:
       - name: Checkout Code

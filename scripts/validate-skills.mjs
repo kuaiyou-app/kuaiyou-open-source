@@ -16,15 +16,15 @@ const examplesDir = join(repoRoot, "examples");
 
 const schemaModulePath = join(
   repoRoot,
-  "kuaiyou-mcp-server",
+  "autoace-cli",
   "build",
   "reactive-skill-schema.mjs"
 );
-const lintModulePath = join(repoRoot, "kuaiyou-mcp-server", "build", "skill-lint.mjs");
+const lintModulePath = join(repoRoot, "autoace-cli", "build", "skill-lint.mjs");
 if (!existsSync(schemaModulePath) || !existsSync(lintModulePath)) {
   console.error(
-    "Missing kuaiyou-mcp-server build output. Run `npm ci && npm run build` " +
-      "inside kuaiyou-mcp-server/ before validating skills."
+    "Missing autoace-cli build output. Run `npm ci && npm run build` " +
+      "inside autoace-cli/ before validating skills."
   );
   process.exit(1);
 }
@@ -36,9 +36,9 @@ try {
 } catch {
   // Prefer mcp-server's ajv if installed there
   try {
-    Ajv = require(join(repoRoot, "kuaiyou-mcp-server/node_modules/ajv"));
+    Ajv = require(join(repoRoot, "autoace-cli/node_modules/ajv"));
   } catch {
-    console.error("Ajv is required. Install with: npm install ajv --prefix kuaiyou-mcp-server");
+    console.error("Ajv is required. Install with: npm install ajv --prefix autoace-cli");
     process.exit(1);
   }
 }
