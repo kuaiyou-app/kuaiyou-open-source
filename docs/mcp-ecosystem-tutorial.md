@@ -8,7 +8,7 @@
 
 这套基于 AI 的端到端热重载体系由三部分组成：
 1. **快游大师 App（手机端）**：内置基于无障碍服务的 `ReactiveExecutionEngine` 与微型 HTTP Server，负责提供截屏/节点树和执行传入的 `ReactiveSkill` 任务。
-2. **kuaiyou-mcp-server（PC 端中介）**：已发布到 [npm](https://www.npmjs.com/package/kuaiyou-mcp-server)。连接 AI 与手机，通过局域网 (HTTP) 或 USB (ADB) 获取手机状态，并将技能推送到手机。
+2. **autoace-cli（PC 端中介）**：已发布到 [npm](https://www.npmjs.com/package/autoace-cli)。连接 AI 与手机，通过局域网 (HTTP) 或 USB (ADB) 获取手机状态，并将技能推送到手机。
 3. **Cursor / Claude Desktop（AI 客户端）**：作为超级大脑，根据用户的自然语言需求和当前屏幕状态，自动编写和修改自动化代码。
 
 ---
@@ -26,13 +26,13 @@
 
 ```bash
 # 临时运行（推荐，自动下载最新版）
-npx -y kuaiyou-mcp-server
+npx -y autoace-cli
 
 # 或全局安装
-npm install -g kuaiyou-mcp-server
+npm install -g autoace-cli
 ```
 
-包页：https://www.npmjs.com/package/kuaiyou-mcp-server
+包页：https://www.npmjs.com/package/autoace-cli
 
 **在 Cursor 中配置：**
 1. 打开 Cursor Settings → Features → MCP。
@@ -41,7 +41,7 @@ npm install -g kuaiyou-mcp-server
 4. Type 选择 `command`。
 5. Command 填写（把 IP:端口 / 配对码换成 App 里显示的值）：
    ```bash
-   KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
+   KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
    ```
 
 **在 Claude Desktop 中配置：**
@@ -51,7 +51,7 @@ npm install -g kuaiyou-mcp-server
   "mcpServers": {
     "kuaiyou": {
       "command": "npx",
-      "args": ["-y", "kuaiyou-mcp-server"],
+      "args": ["-y", "autoace-cli"],
       "env": {
         "KUAIYOU_DEVICE_IP": "192.168.1.100:3847",
         "KUAIYOU_MCP_PAIRING_CODE": "482917"

@@ -1,51 +1,35 @@
-# kuaiyou-mcp-server
+# autoace-cli
 
-快游大师官方 MCP Server（npm 包）。让 Cursor / Claude 等 AI 客户端通过 MCP 连接 Android 上的「快游大师」App。
+快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Cursor / Claude 等 AI 客户端连接 Android 上的「快游大师」App，编写并推送**技能**。
 
-- **npm**：https://www.npmjs.com/package/kuaiyou-mcp-server
+- **npm**：https://www.npmjs.com/package/autoace-cli
 - **源码**：https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/kuaiyou-mcp-server
-- **官网文档**：https://kuaiyou-app.github.io/kuaiyou-website/docs/
+- **官网**：https://kuaiyou-app.github.io/kuaiyou-website/
+
+兼容旧命令名：`kuaiyou-mcp-server`（同一二进制）。
 
 ## 要求
 
 - Node.js ≥ 18
-- 手机已安装快游大师，并开启 **MCP 服务**（设置 → 高级设置）
+- 手机已安装快游大师，并开启 **MCP 服务**
 - 局域网模式：手机与电脑同一 Wi‑Fi；点击「MCP 服务」可复制连接信息
 
-## 快速使用
+## 安装 / 运行
 
 ```bash
-# 局域网（推荐）：IP:端口 + 6 位配对码
-KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
+# 推荐：npx
+npx -y autoace-cli
 
-# USB / ADB 回退
-KUAIYOU_ADB_SERIAL=<serial> npx -y kuaiyou-mcp-server
+# 全局安装
+npm install -g autoace-cli
+autoace-cli
 ```
 
-也可永久安装：
+局域网示例：
 
 ```bash
-npm install -g kuaiyou-mcp-server
+KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
 ```
-
-## Cursor / Claude Desktop
-
-```json
-{
-  "mcpServers": {
-    "kuaiyou": {
-      "command": "npx",
-      "args": ["-y", "kuaiyou-mcp-server"],
-      "env": {
-        "KUAIYOU_DEVICE_IP": "192.168.1.100:3847",
-        "KUAIYOU_MCP_PAIRING_CODE": "482917"
-      }
-    }
-  }
-}
-```
-
-`KUAIYOU_DEVICE_IP` 支持 `ip` 或 `ip:port`（未写端口时默认 `8080`）。配对码对应环境变量 `KUAIYOU_MCP_PAIRING_CODE`（兼容旧名 `KUAIYOU_MCP_TOKEN`）。
 
 ## License
 

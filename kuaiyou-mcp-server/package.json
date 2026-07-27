@@ -1,9 +1,10 @@
 {
-  "name": "kuaiyou-mcp-server",
-  "version": "1.0.0",
-  "description": "A Model Context Protocol (MCP) server for Android reactive automation, enabling AI agents like Cursor and Claude to directly control Kuaiyou Master App.",
+  "name": "autoace-cli",
+  "version": "1.0.1",
+  "description": "autoace-cli — MCP CLI for Kuaiyou Master Android automation. Lets Cursor/Claude control the phone and push skills.",
   "main": "./build/index.js",
   "bin": {
+    "autoace-cli": "build/index.js",
     "kuaiyou-mcp-server": "build/index.js"
   },
   "files": [

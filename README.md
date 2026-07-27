@@ -7,8 +7,8 @@
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source">
     <img src="https://img.shields.io/github/stars/kuaiyou-app/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
   </a>
-  <a href="https://www.npmjs.com/package/kuaiyou-mcp-server">
-    <img src="https://img.shields.io/npm/v/kuaiyou-mcp-server.svg" alt="npm version" />
+  <a href="https://www.npmjs.com/package/autoace-cli">
+    <img src="https://img.shields.io/npm/v/autoace-cli.svg" alt="npm version" />
   </a>
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
@@ -39,7 +39,7 @@
 - 🎯 **基于无障碍树的语义点击**：抛弃脆弱的绝对坐标，支持直接通过 `semantic`（如“去签到按钮”）描述目标，系统底层结合无障碍 (Accessibility) 树和端侧小模型进行精准定位与点击。
 - 📏 **坐标百分比与相对滑动**：针对不同分辨率的设备，支持 `startXPct` 等百分比坐标；支持在一个特定 UI 面板（如评论区）内进行精准的相对滑动操作。
 - 🔒 **严格的本地化执行**：全面移除对外部大模型运行期调用的依赖（剔除了旧版的 `agentId` 字段，严格拦截 `askAgent` 动作），所有的动作指令（`tap`, `swipe`, `launchApp`, `delay`）都在设备本地极速闭环，大幅提升运行流畅度并节省云端 Token。
-- 🤖 **大模型原生的 MCP 集成**：通过我们提供的 `kuaiyou-mcp-server`，AI 可在 PC 编排端随时提取 Android 屏幕结构、计算中心点坐标，并秒级下发调试脚本，实现完美的“PC 编排 - 端侧运行”联调闭环。
+- 🤖 **大模型原生的 MCP 集成**：通过我们提供的 `autoace-cli`，AI 可在 PC 编排端随时提取 Android 屏幕结构、计算中心点坐标，并秒级下发调试脚本，实现完美的“PC 编排 - 端侧运行”联调闭环。
 
 ---
 
@@ -47,7 +47,7 @@
 
 | 目录/模块 | 描述 |
 | --- | --- |
-| **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端（MCP 协议）。打通 PC 编排与 Android 实机联调，向 AI 暴露节点提取、截图和脚本下发能力。 |
+| **[autoace-cli](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端（MCP 协议）。打通 PC 编排与 Android 实机联调，向 AI 暴露节点提取、截图和脚本下发能力。 |
 | **[schema.json](./schema.json)** | 手写权威 `ReactiveSkill` JSON Schema（LLM/App 契约）。V2 不含 `agentId`，也不声明已移除的 `readText`/`setClipboard`。 |
 | **[docs](./docs/)** | 详尽的开发者指南，包含 V2 技能编写与联调手册、避坑指南等。 |
 | **[examples](./examples/)** | 规范的 V2 技能脚本示例，包含无限刷视频、智能互动等。 |
@@ -67,19 +67,19 @@
 - *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，系统会自动回退到 ADB 模式。多设备时设置 `KUAIYOU_ADB_SERIAL`。)*
 
 ### 2. 在 AI 助理中配置 MCP Server
-`kuaiyou-mcp-server` 已发布到 npm（[kuaiyou-mcp-server](https://www.npmjs.com/package/kuaiyou-mcp-server)）。需 **Node.js ≥ 18**。
+`autoace-cli` 已发布到 npm（[autoace-cli](https://www.npmjs.com/package/autoace-cli)）。需 **Node.js ≥ 18**。
 
 在 Cursor (Settings → Features → MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
 
 ```bash
 # 局域网直连（推荐）：设备 IP:端口 + App 显示的 6 位配对码
-KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y kuaiyou-mcp-server
+KUAIYOU_DEVICE_IP=192.168.1.100:3847 KUAIYOU_MCP_PAIRING_CODE=482917 npx -y autoace-cli
 
 # USB 数据线直连模式 (Fallback，可选指定序列号)
-KUAIYOU_ADB_SERIAL=<serial> npx -y kuaiyou-mcp-server
+KUAIYOU_ADB_SERIAL=<serial> npx -y autoace-cli
 ```
 
-也可全局安装：`npm install -g kuaiyou-mcp-server`。
+也可全局安装：`npm install -g autoace-cli`。
 
 > 配对码通过 `Authorization: Bearer` 发送（也兼容旧环境变量名 `KUAIYOU_MCP_TOKEN`）；读写技能请使用 `storeValue`，不要使用已移除的 `readText` / `setClipboard`。
 
