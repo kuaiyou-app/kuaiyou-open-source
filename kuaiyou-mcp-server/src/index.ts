@@ -33,8 +33,8 @@ const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 const server = new Server(
   {
-    name: "kuaiyou-mcp-server",
-    version: "1.0.0",
+    name: "autoace-cli",
+    version: "1.0.1",
   },
   {
     capabilities: {

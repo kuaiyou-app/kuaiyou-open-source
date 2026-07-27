@@ -364,7 +364,7 @@ export function validateSkillPayload(input: unknown): SkillLintResult {
 export function formatLintResult(result: SkillLintResult): string {
   const lines: string[] = [];
   if (result.ok) {
-    lines.push("Validation successful! The JSON is a valid Kuaiyou ReactiveSkill.");
+    lines.push("Validation successful! The JSON is a valid Kuaiyou skill.");
   } else {
     lines.push("Validation failed with errors:");
     lines.push(...result.errors.map((e) => `- ${e}`));

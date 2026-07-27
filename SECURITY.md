@@ -9,7 +9,7 @@
 
 报告中请尽量包含：
 
-- 受影响的模块与版本（如 `kuaiyou-mcp-server@1.0.0`）
+- 受影响的模块与版本（如 `autoace-cli@1.0.1`）
 - 复现步骤或概念验证（PoC）
 - 潜在影响评估
 
@@ -22,7 +22,7 @@
 
 | 模块 | 版本 | 支持状态 |
 | --- | --- | --- |
-| `kuaiyou-mcp-server` | 1.x（最新发布） | ✅ 支持 |
+| `autoace-cli` | 1.x（最新发布） | ✅ 支持 |
 | 技能库 (`skills/`) | — | 仅接受结构/内容问题报告 |
 | 开源官网 | [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website) | 在对应仓库报告 |
 
@@ -30,7 +30,7 @@
 
 本仓库的安全边界主要包括：
 
-- **MCP Server（`kuaiyou-mcp-server/`）**：在本机以用户权限运行，通过局域网 HTTP 或 ADB 与 Android 设备通信。命令注入、路径穿越、不安全的临时文件处理等属于重点防护面。
-- **技能 JSON（`skills/`、`schema.json`）**：技能由用户自行审阅后导入手机执行。结构校验由 `ReactiveSkill` Schema 提供，但**技能内容的语义安全性由使用者负责**——请勿导入来源不明的技能。
+- **MCP CLI（`kuaiyou-mcp-server/`，包名 `autoace-cli`）**：在本机以用户权限运行，通过局域网 HTTP 或 ADB 与 Android 设备通信。命令注入、路径穿越、不安全的临时文件处理等属于重点防护面。
+- **技能 JSON（`skills/`、`schema.json`）**：技能由用户自行审阅后导入手机执行。结构校验由 Schema 提供，但**技能内容的语义安全性由使用者负责**——请勿导入来源不明的技能。
 
 以下不在本仓库安全范围内：快游大师 Android 闭源客户端本身的问题（请通过应用内渠道反馈）、开源官网（见 `kuaiyou-website`）、用户本机环境（ADB、Node.js）的固有风险。
