@@ -112,7 +112,7 @@ curl -fsSL \
 ### 一键（若已装 skills CLI）
 
 ```bash
-npx skills add kuaiyou-app/kuaiyou-open-source --path agent-skills/autoace
+npx skills add kuaiyou-app/kuaiyou-open-source --skill autoace
 ```
 
 ---
