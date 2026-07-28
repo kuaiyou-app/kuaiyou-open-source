@@ -88,8 +88,9 @@
         "fallbackPolicy": { "type": "string", "enum": ["AUTO_ONLY", "ALLOW_PROMPT", "STRICT"], "default": "AUTO_ONLY" },
         "executionMode": { "type": "string", "enum": ["SINGLE", "REPEAT"], "default": "REPEAT" },
         "loopFailurePolicy": { "type": "string", "enum": ["SKIP_ROUND", "ABORT", "RETRY_AFTER_COOLDOWN"], "default": "SKIP_ROUND" },
-        "recognitionTimeoutMs": { "type": "integer", "default": 20000 },
-        "maxRecognitionAttempts": { "type": "integer", "default": 3 }
+        "recognitionTimeoutMs": { "type": "integer", "default": 20000, "description": "单次页面目标识别窗口（毫秒）" },
+        "actionRetryCount": { "type": "integer", "minimum": 0, "default": 2, "description": "动作首次失败后的额外重试次数；0=不重试" },
+        "maxRecognitionAttempts": { "type": "integer", "default": 3, "description": "页面目标识别窗口最大次数，不用于动作重试" }
       }
     },
 
