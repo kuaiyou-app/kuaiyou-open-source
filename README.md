@@ -1,8 +1,9 @@
 # Kuaiyou Open Source (快游大师开源生态)
 
 <div align="center">
-  <img src="https://via.placeholder.com/800x200?text=Kuaiyou+Master+Open+Source" alt="Kuaiyou Master Logo">
-  <h3>用 AI 编写 Android 端侧自动化技能（MCP + 快游大师）</h3>
+  <img src="https://kuaiyou-app.github.io/logo.jpg" alt="Kuaiyou Master Logo" width="120">
+  <h2>The Agentic Skills</h2>
+  <p>用 AI 编写 Android 端侧自动化技能（MCP + 快游大师）</p>
   <br />
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source">
     <img src="https://img.shields.io/github/stars/kuaiyou-app/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
@@ -13,20 +14,22 @@
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </a>
-  <a href="https://kuaiyou-app.github.io/kuaiyou-website/">
-    <img src="https://img.shields.io/badge/Website-GitHub%20Pages-blue.svg" alt="Website" />
+  <a href="https://kuaiyou-app.github.io/">
+    <img src="https://img.shields.io/badge/Website-Kuaiyou%20Master-blue.svg" alt="Website" />
   </a>
 </div>
 
 ---
 
-欢迎来到 **快游大师 (Kuaiyou Master)** 官方开源仓库！
+欢迎来到 **快游大师 (Kuaiyou Master)** 官方开源生态仓库！
 
-本仓库提供电脑端 CLI（**autoace-cli**）、技能 Schema 与示例。配合手机端「快游大师」App，可在 Cursor 等 AI 客户端里用自然语言生成**技能**，校验后下发到手机本地执行。
+**本项目的核心定位是打造 "The Agentic Skills"（智能体技能生态）。**
+作为快游大师的开源中心，本仓库提供核心电脑端 CLI 工具（**autoace-cli**）、标准化的技能 Schema 契约以及丰富的开发示例。
+配合手机端「快游大师」App，您可以直接在 Cursor、Windsurf、Claude Code 等 AI 客户端中，使用自然语言快速生成 Android 端侧自动化**技能**，完成实时校验并一键下发至手机端本地执行，开启 AI 原生自动化的全新体验。
 
 > **说明**：
 > Android 客户端（无障碍执行引擎等）为闭源，请在应用商店搜索 **「快游大师」** 下载。
-> **开源官网**：[`kuaiyou-app/kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website) → https://kuaiyou-app.github.io/kuaiyou-website/
+> **开源官网**：https://kuaiyou-app.github.io/ （源码：[`kuaiyou-app/kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）
 
 ---
 
@@ -50,7 +53,7 @@
 | **[examples](./examples/)** | 技能示例 JSON。 |
 | **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。 |
 | **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（Claude Code `/autoace`、Codex `$autoace`）。 |
-| **[kuaiyou-website](https://github.com/kuaiyou-app/kuaiyou-website)** | 独立开源官网（GitHub Pages）。 |
+| **[开源官网 (Website)](https://kuaiyou-app.github.io/)** | 独立开源官网（源码位于 [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。 |
 
 ---
 

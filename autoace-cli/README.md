@@ -1,12 +1,12 @@
 # autoace-cli
 
-快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Claude Code / Codex / Cursor 等连接 Android 上的「快游大师」App，编写并推送**技能**。
+**The Agentic Skills** - 快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Claude Code / Codex / Cursor 等连接 Android 上的「快游大师」App，编写并推送**智能体技能**。
 
 配套 Agent Skill 名称：**`autoace`**（仓库路径 `agent-skills/autoace/`）。
 
 - **npm**：https://www.npmjs.com/package/autoace-cli
 - **源码**：https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/autoace-cli
-- **官网文档**：https://kuaiyou-app.github.io/kuaiyou-website/docs/
+- **官网文档**：https://kuaiyou-app.github.io/docs/
 - **接入教程**：https://github.com/kuaiyou-app/kuaiyou-open-source/blob/main/docs/mcp-ecosystem-tutorial.md
 
 兼容旧命令名：`kuaiyou-mcp-server`（同一二进制）。
