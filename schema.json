@@ -285,6 +285,11 @@
             "description": { "type": ["string", "null"] },
             "viewId": { "type": ["string", "null"] },
             "className": { "type": ["string", "null"] },
+            "requireAllSpecified": {
+              "type": "boolean",
+              "default": false,
+              "description": "为 true 时，所有已填写的 text/description/viewId/className 必须同时命中。适合高风险业务入口，避免同文案或同 ID 假命中。"
+            },
             "index": { "type": "integer", "default": 0 },
             "previewImagePath": { "type": ["string", "null"] },
             "targetPackageName": { "type": ["string", "null"] }
