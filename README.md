@@ -1,7 +1,7 @@
 # Kuaiyou Open Source (快游大师开源生态)
 
 <div align="center">
-  <img src="https://kuaiyou-app.github.io/logo.jpg" alt="Kuaiyou Master Logo" width="120">
+  <img src="docs/assets/logo.png" alt="Kuaiyou Master Logo" width="120">
   <h2>The Agentic Skills</h2>
   <p>用 AI 编写 Android 端侧自动化技能（MCP + 快游大师）</p>
   <br />
