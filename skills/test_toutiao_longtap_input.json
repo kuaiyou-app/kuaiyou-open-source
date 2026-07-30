@@ -2,22 +2,19 @@
   "id": "reactive_test_toutiao_longtap_input",
   "name": "今日头条长按搜索框测试",
   "description": "打开头条首页，点击 ki9 进入搜索框后长按输入框，验证出现输入法入口。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
       "name": "启动头条",
       "priority": 10,
       "trigger": { "type": "immediate" },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -28,23 +25,34 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": { "type": "desc", "desc": "听一听开关" }
+      "action": {
+        "type": "conditionBranch",
+        "condition": {
+          "type": "elementVisible",
+          "target": {
+            "type": "desc",
+            "desc": "听一听开关"
+          }
+        },
+        "onTrue": [
+          {
+            "type": "delay",
+            "durationMs": 400
+          }
+        ],
+        "onFalse": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            { "type": "delay", "durationMs": 400 }
-          ],
-          "onFalse": [
-            { "type": "systemAction", "systemType": "BACK", "delayMs": 300 },
-            { "type": "delay", "durationMs": 1200 }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          }
+        ],
+        "timeoutMs": 1200
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -58,14 +66,15 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" } }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" },
-          "delayMs": 300,
-          "timeoutMs": 2000
-        }
-      ],
+      "action": {
+        "type": "tap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/ki9"
+        },
+        "delayMs": 300,
+        "timeoutMs": 2000
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -79,15 +88,16 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" } }
         ]
       },
-      "actions": [
-        {
-          "type": "longTap",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" },
-          "pressDurationMs": 700,
-          "delayMs": 300,
-          "timeoutMs": 2500
-        }
-      ],
+      "action": {
+        "type": "longTap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/cx"
+        },
+        "pressDurationMs": 700,
+        "delayMs": 300,
+        "timeoutMs": 2500
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -101,14 +111,12 @@
           { "type": "elementVisible", "target": { "type": "desc", "desc": "输入法" } }
         ]
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "长按成功，已出现输入法入口",
-          "speakVoice": false,
-          "showText": true
-        }
-      ],
+      "action": {
+        "type": "notify",
+        "message": "长按成功，已出现输入法入口",
+        "speakVoice": false,
+        "showText": true
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     }
   ],

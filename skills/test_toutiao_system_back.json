@@ -2,22 +2,19 @@
   "id": "reactive_test_toutiao_system_back",
   "name": "今日头条返回键测试",
   "description": "打开头条搜索页后执行 BACK，验证能回到首页并再次看到听一听开关。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
       "name": "启动头条",
       "priority": 10,
       "trigger": { "type": "immediate" },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -28,23 +25,34 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": { "type": "desc", "desc": "听一听开关" }
+      "action": {
+        "type": "conditionBranch",
+        "condition": {
+          "type": "elementVisible",
+          "target": {
+            "type": "desc",
+            "desc": "听一听开关"
+          }
+        },
+        "onTrue": [
+          {
+            "type": "delay",
+            "durationMs": 400
+          }
+        ],
+        "onFalse": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            { "type": "delay", "durationMs": 400 }
-          ],
-          "onFalse": [
-            { "type": "systemAction", "systemType": "BACK", "delayMs": 300 },
-            { "type": "delay", "durationMs": 1200 }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          }
+        ],
+        "timeoutMs": 1200
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -58,13 +66,14 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" } }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" },
-          "delayMs": 300
-        }
-      ],
+      "action": {
+        "type": "tap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/ki9"
+        },
+        "delayMs": 300
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -78,14 +87,12 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/e0" } }
         ]
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "已进入搜索页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "notify",
+        "message": "已进入搜索页",
+        "showText": true,
+        "speakVoice": false
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -99,32 +106,50 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/e0" } }
         ]
       },
-      "actions": [
-        {
-          "type": "systemAction",
-          "systemType": "BACK",
-          "delayMs": 300
-        },
-        {
-          "type": "delay",
-          "durationMs": 900
-        },
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": { "type": "id", "viewId": "com.ss.android.article.news:id/e0" }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            { "type": "systemAction", "systemType": "BACK", "delayMs": 300 },
-            { "type": "delay", "durationMs": 1200 }
-          ],
-          "onFalse": [
-            { "type": "delay", "durationMs": 400 }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 900
+          },
+          {
+            "type": "conditionBranch",
+            "condition": {
+              "type": "elementVisible",
+              "target": {
+                "type": "id",
+                "viewId": "com.ss.android.article.news:id/e0"
+              }
+            },
+            "onTrue": [
+              {
+                "type": "systemAction",
+                "systemType": "BACK",
+                "delayMs": 300
+              },
+              {
+                "type": "delay",
+                "durationMs": 1200
+              }
+            ],
+            "onFalse": [
+              {
+                "type": "delay",
+                "durationMs": 400
+              }
+            ],
+            "timeoutMs": 1200
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -138,14 +163,12 @@
           { "type": "elementVisible", "target": { "type": "desc", "desc": "听一听开关" } }
         ]
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "返回首页成功，已看到听一听开关",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "notify",
+        "message": "返回首页成功，已看到听一听开关",
+        "showText": true,
+        "speakVoice": false
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     }
   ],

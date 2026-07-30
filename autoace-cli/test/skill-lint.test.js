@@ -1,6 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { validateSkillPayload } = require("../build/skill-lint.js");
+const { createContractValidator } = require("../build/contract-schema-validator.js");
+const { schemaForAction } = require("../fixtures/runtime-contract.js");
 
 function baseSkill() {
   return {
@@ -20,7 +22,7 @@ function baseSkill() {
   };
 }
 
-test("rejects readText / setClipboard / askAgent", () => {
+test("rejects forbidden local-only action aliases", () => {
   for (const action of [
     { type: "readText", target: { type: "text", text: "x" }, variableName: "v" },
     { type: "setClipboard", text: "x" },
@@ -28,9 +30,9 @@ test("rejects readText / setClipboard / askAgent", () => {
   ]) {
     const skill = baseSkill();
     skill.goals[0].action = action;
-    const r = validateSkillPayload(skill);
-    assert.equal(r.ok, false, action.type);
-    assert.ok(r.errors.some((e) => e.includes(action.type)), r.errors.join(";"));
+    const result = validateSkillPayload(skill);
+    assert.equal(result.ok, false, action.type);
+    assert.ok(result.errors.some((error) => error.includes(action.type)), result.errors.join(";"));
   }
 });
 
@@ -42,9 +44,9 @@ test("rejects dangling afterGoal and detects cycles", () => {
     trigger: { type: "afterGoal", goalId: "missing" },
     action: { type: "delay", durationMs: 1 },
   });
-  let r = validateSkillPayload(skill);
-  assert.equal(r.ok, false);
-  assert.ok(r.errors.some((e) => e.includes("missing")));
+  let result = validateSkillPayload(skill);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.includes("missing")));
 
   const cyclic = baseSkill();
   cyclic.goals = [
@@ -61,17 +63,19 @@ test("rejects dangling afterGoal and detects cycles", () => {
       action: { type: "delay", durationMs: 1 },
     },
   ];
-  r = validateSkillPayload(cyclic);
-  assert.equal(r.ok, false);
-  assert.ok(r.errors.some((e) => e.includes("cycle")));
+  result = validateSkillPayload(cyclic);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.includes("cycle")));
 });
 
-test("warns on unknown action type with suggestion", () => {
+test("applies a contract validator supplied by the running client", () => {
+  const validator = createContractValidator(schemaForAction("notify"));
   const skill = baseSkill();
-  skill.goals[0].action = { type: "Tap", target: { type: "text", text: "x" } };
-  const r = validateSkillPayload(skill);
-  assert.equal(r.ok, true);
-  assert.ok(r.warnings.some((w) => /Tap/.test(w) && /tap/.test(w)));
+  skill.goals[0].action = { type: "futureAction" };
+
+  const result = validateSkillPayload(skill, validator);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /unknown or invalid action type "futureAction"/);
 });
 
 test("warns on infinite REPEAT without timeout termination", () => {
@@ -84,7 +88,56 @@ test("warns on infinite REPEAT without timeout termination", () => {
     enabled: true,
   };
   delete skill.termination;
-  const r = validateSkillPayload(skill);
-  assert.equal(r.ok, true);
-  assert.ok(r.warnings.some((w) => /forever|unlimited/i.test(w)));
+  const result = validateSkillPayload(skill);
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some((warning) => /forever|unlimited/i.test(warning)));
+});
+
+test("business lint does not reject forEach payloads before device validation", () => {
+  const variants = [
+    {
+      type: "fixedTargets",
+      targets: [
+        {
+          displayName: "row 1",
+          selector: { type: "text", text: "row 1", matchMode: "CONTAINS" },
+        },
+      ],
+    },
+    {
+      type: "matchRule",
+      item: { type: "text", text: "openai", matchMode: "CONTAINS" },
+      excludeTexts: ["广告"],
+      findTimeoutMs: 15000,
+    },
+  ];
+
+  for (const source of variants) {
+    const skill = baseSkill();
+    skill.goals[0].action = {
+      type: "forEach",
+      source,
+      actions: [{ type: "notify", message: "{{item}}", speakVoice: false }],
+    };
+    const result = validateSkillPayload(skill);
+    assert.equal(result.ok, true, JSON.stringify(result.errors));
+  }
+});
+
+test("business lint does not classify storeValue sources as policy errors", () => {
+  const cases = [
+    { type: "screen", target: { type: "text", text: "row 1" } },
+    { type: "template", text: "{{item}}" },
+  ];
+
+  for (const source of cases) {
+    const skill = baseSkill();
+    skill.goals[0].action = {
+      type: "storeValue",
+      source,
+      variableName: "value",
+    };
+    const result = validateSkillPayload(skill);
+    assert.equal(result.ok, true, JSON.stringify(result.errors));
+  }
 });

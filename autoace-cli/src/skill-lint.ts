@@ -1,4 +1,4 @@
-import { ReactiveSkillSchema } from "./reactive-skill-schema.js";
+import { pathToString, type ContractValidator } from "./contract-schema-validator.js";
 
 export type SkillLintResult = {
   ok: boolean;
@@ -26,83 +26,6 @@ const FORBIDDEN_TERMINATION_TYPES = new Set([
   "Timeout", // V1 used Timeout + timeoutMs; v2 is timeout + maxDurationMs
 ]);
 
-const KNOWN_ACTION_TYPES = new Set([
-  "tap",
-  "longTap",
-  "typeText",
-  "swipe",
-  "scrollTo",
-  "launchApp",
-  "systemAction",
-  "storeValue",
-  "notify",
-  "delay",
-  "waitFor",
-  "assertion",
-  "conditionBranch",
-  "loop",
-  "runStep",
-  "captureScreenshot",
-]);
-
-const KNOWN_TRIGGER_TYPES = new Set([
-  "elementVisible",
-  "elementGone",
-  "appInForeground",
-  "appNotInForeground",
-  "afterGoal",
-  "delayedAfterGoal",
-  "immediate",
-  "anyOf",
-  "allOf",
-]);
-
-const KNOWN_TERMINATION_TYPES = new Set([
-  "allGoalsDone",
-  "anyGoalDone",
-  "manual",
-  "timeout",
-  "idleTimeout",
-]);
-
-const KNOWN_TARGET_TYPES = new Set([
-  "text",
-  "desc",
-  "id",
-  "pos",
-  "semantic",
-  "image",
-  "composite",
-]);
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
-    }
-  }
-  return dp[m][n];
-}
-
-function didYouMean(value: string, known: Iterable<string>): string | null {
-  let best: string | null = null;
-  let bestDist = Infinity;
-  const lower = value.toLowerCase();
-  for (const candidate of known) {
-    const d = levenshtein(lower, candidate.toLowerCase());
-    if (d < bestDist && d <= 3) {
-      bestDist = d;
-      best = candidate;
-    }
-  }
-  return best;
-}
 
 function walk(obj: unknown, visit: (node: Record<string, unknown>, path: string) => void, path = ""): void {
   if (!obj || typeof obj !== "object") return;
@@ -211,7 +134,7 @@ function lintReferences(skill: Record<string, unknown>, errors: string[]): void 
   }
 }
 
-function lintGoals(skill: Record<string, unknown>, errors: string[], warnings: string[]): void {
+function lintGoals(skill: Record<string, unknown>, warnings: string[]): void {
   const goals = skill.goals;
   if (!Array.isArray(goals)) return;
 
@@ -219,12 +142,6 @@ function lintGoals(skill: Record<string, unknown>, errors: string[], warnings: s
     const goal = goals[i];
     if (!goal || typeof goal !== "object") continue;
     const g = goal as Record<string, unknown>;
-    const trigger = g.trigger as Record<string, unknown> | undefined;
-    const hasAction = g.action !== undefined || (Array.isArray(g.actions) && g.actions.length > 0);
-    if (!hasAction && trigger?.type !== "immediate") {
-      errors.push(`goals[${i}] (${g.id ?? "?"}): non-immediate goals must include action or actions`);
-    }
-
     const constraints = (g.constraints ?? {}) as Record<string, unknown>;
     const maxExecutions = constraints.maxExecutions;
     const executionMode = constraints.executionMode ?? skill.executionMode;
@@ -246,12 +163,9 @@ function lintTypes(skill: unknown, errors: string[], warnings: string[]): void {
     if (typeof node.type !== "string") return;
     const type = node.type;
 
-    // Forbidden action aliases / V1 names
     if (FORBIDDEN_ACTION_TYPES.has(type)) {
-      const hint = didYouMean(type, KNOWN_ACTION_TYPES);
       errors.push(
         `${path || "root"}: forbidden action type "${type}"` +
-          (hint ? ` (did you mean "${hint}"?)` : "") +
           (type === "readText" || type === "setClipboard"
             ? '; use storeValue (source.screen / source.template)'
             : "")
@@ -268,51 +182,15 @@ function lintTypes(skill: unknown, errors: string[], warnings: string[]): void {
       return;
     }
 
-    // Context-aware unknown-type warnings
-    if (path === "termination" || path.endsWith(".termination")) {
-      if (!KNOWN_TERMINATION_TYPES.has(type)) {
-        const hint = didYouMean(type, KNOWN_TERMINATION_TYPES);
-        warnings.push(
-          `${path}: unknown termination type "${type}"` + (hint ? ` (did you mean "${hint}"?)` : "")
-        );
-      }
-      return;
-    }
-
-    if (node.target !== undefined || path.includes(".target") || path.endsWith(".when") || path.endsWith(".dismiss")) {
-      // skip — handled when visiting target objects below via type alone is ambiguous
-    }
-
-    // Heuristic: action-like nodes often sit under action/actions
-    const isActionPath =
-      /(^|\.)action$/.test(path) ||
-      /\.actions\[\d+\]$/.test(path) ||
-      /\.onTrue\[\d+\]$/.test(path) ||
-      /\.onFalse\[\d+\]$/.test(path) ||
-      path === "launchApp";
-    const isTriggerPath = /(^|\.)trigger$/.test(path) || /\.triggers\[\d+\]$/.test(path);
     const isTargetPath =
       /(^|\.)target$/.test(path) ||
       path.endsWith(".when") ||
       path.endsWith(".dismiss") ||
+      path.endsWith(".selector") ||
+      path.endsWith(".scope") ||
+      path.endsWith(".item") ||
+      path.endsWith(".value") ||
       /\.fallbacks\[\d+\]$/.test(path);
-
-    if (isActionPath && !KNOWN_ACTION_TYPES.has(type)) {
-      const hint = didYouMean(type, KNOWN_ACTION_TYPES);
-      warnings.push(
-        `${path}: unknown action type "${type}"` + (hint ? ` (did you mean "${hint}"?)` : "")
-      );
-    } else if (isTriggerPath && !KNOWN_TRIGGER_TYPES.has(type)) {
-      const hint = didYouMean(type, KNOWN_TRIGGER_TYPES);
-      warnings.push(
-        `${path}: unknown trigger type "${type}"` + (hint ? ` (did you mean "${hint}"?)` : "")
-      );
-    } else if (isTargetPath && !KNOWN_TARGET_TYPES.has(type)) {
-      const hint = didYouMean(type, KNOWN_TARGET_TYPES);
-      warnings.push(
-        `${path}: unknown target type "${type}"` + (hint ? ` (did you mean "${hint}"?)` : "")
-      );
-    }
 
     if (isTargetPath && type === "pos") {
       warnings.push(`${path}: prefer semantic/text/id selectors over fragile pos coordinates`);
@@ -321,10 +199,13 @@ function lintTypes(skill: unknown, errors: string[], warnings: string[]): void {
 }
 
 /**
- * Full MCP validation: Zod structure + business lint.
- * Does not read files — caller supplies already-parsed JSON or a JSON string.
+ * Parse and lint a skill. When supplied, contractValidator is compiled from
+ * the schema returned by the running client.
  */
-export function validateSkillPayload(input: unknown): SkillLintResult {
+export function validateSkillPayload(
+  input: unknown,
+  contractValidator?: ContractValidator
+): SkillLintResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -341,23 +222,27 @@ export function validateSkillPayload(input: unknown): SkillLintResult {
     return { ok: false, parsed: null, errors: ["Skill payload must be a JSON object"], warnings: [] };
   }
 
-  const zod = ReactiveSkillSchema.safeParse(parsed);
-  if (!zod.success) {
-    for (const issue of zod.error.issues) {
-      errors.push(`${issue.path.join(".") || "root"}: ${issue.message}`);
+  if (contractValidator) {
+    const contract = contractValidator(parsed);
+    if (!contract.ok) {
+      for (const issue of contract.issues) {
+        errors.push(`${pathToString(issue.path)}: ${issue.message}`);
+      }
     }
   }
 
   const skill = parsed as Record<string, unknown>;
   lintTypes(skill, errors, warnings);
   lintReferences(skill, errors);
-  lintGoals(skill, errors, warnings);
+  lintGoals(skill, warnings);
+
+  const dedupe = (items: string[]) => [...new Set(items)];
 
   return {
     ok: errors.length === 0,
-    parsed: zod.success ? zod.data : parsed,
-    errors,
-    warnings,
+    parsed,
+    errors: dedupe(errors),
+    warnings: dedupe(warnings),
   };
 }
 

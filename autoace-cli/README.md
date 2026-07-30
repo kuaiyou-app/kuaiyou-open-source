@@ -15,7 +15,7 @@
 
 ## 要求
 
-- Node.js ≥ 18、npm ≥ 9
+- Node.js ≥ 20、npm ≥ 10
 - 手机已安装快游大师，并开启 **MCP 服务**
 - 局域网模式：手机与电脑同一 Wi‑Fi；点击「MCP 服务」可复制给 Agent 的完整连接配置
 
@@ -33,7 +33,13 @@ env:
   KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
+如果客户端提供 TLS 地址，可改用优先级更高的 `KUAIYOU_DEVICE_URL=https://host:port`。当前仅提供 IP 的客户端仍通过兼容的局域网 HTTP 通道连接；此时应使用可信、隔离的网络，因为配对码和屏幕数据不会获得传输层加密保护。
+
 端口与配对码每次开启 MCP 服务都会变化，请使用 App 当前复制的值；配对码不要写入项目仓库、日志或 Git 提交。连续错码返回 `429` 时，按 `Retry-After` 等待后再试。
+
+## 契约获取
+
+CLI 不内置技能 Schema。本地 Agent 可调用 `get_kuaiyou_schema` 读取当前 App 的 `GET /api/mcp/schema` 响应；`validate_kuaiyou_skill` 和 `push_reactive_skill` 也会在执行时重新请求该端点，再使用实时响应进行校验。客户端是唯一契约源；未连接设备时不能执行完整契约校验。
 
 也可全局安装：`npm install -g autoace-cli`，客户端 command 使用 `autoace-cli`。
 

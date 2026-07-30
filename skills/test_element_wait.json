@@ -11,19 +11,27 @@
         "type": "elementVisible",
         "target": { "type": "text", "text": "确认" }
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": { "type": "text", "text": "确认" },
-          "timeoutMs": 2000,
-          "delayMs": 200
-        },
-        {
-          "type": "notify",
-          "message": "已点击确认按钮",
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "tap",
+            "target": {
+              "type": "text",
+              "text": "确认"
+            },
+            "timeoutMs": 2000,
+            "delayMs": 200
+          },
+          {
+            "type": "notify",
+            "message": "已点击确认按钮",
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 3,
         "cooldownMs": 2000,

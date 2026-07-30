@@ -2,7 +2,6 @@
   "id": "reactive_test_toutiao_clipboard_delay",
   "name": "今日头条剪贴板与延时测试",
   "description": "验证 SetClipboard、Delay、Notify 这类不依赖复杂页面反馈的动作。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
@@ -11,15 +10,13 @@
       "trigger": {
         "type": "immediate"
       },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -35,26 +32,31 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "storeValue",
-          "source": {
-            "type": "template",
-            "text": "头条剪贴板测试"
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "storeValue",
+            "source": {
+              "type": "template",
+              "text": "头条剪贴板测试"
+            },
+            "copyToClipboard": true
           },
-          "copyToClipboard": true
-        },
-        {
-          "type": "delay",
-          "durationMs": 1200
-        },
-        {
-          "type": "notify",
-          "message": "剪贴板和延时动作完成",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          },
+          {
+            "type": "notify",
+            "message": "剪贴板和延时动作完成",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,

@@ -2,7 +2,6 @@
   "id": "reactive_test_repeat_mode_foreground_v2",
   "name": "REPEAT 模式验证 v2 - 前台检测（无自动启动）",
   "description": "使用前请手动打开今日头条，再启动本技能。验证三个核心行为：①进入前台立即触发；②保持前台不重复；③切走再切回重新触发。技能运行 300 秒后自动结束。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "detect_foreground_repeat",
@@ -12,18 +11,23 @@
         "type": "appInForeground",
         "packageName": "com.ss.android.article.news"
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "✅ REPEAT 触发：今日头条进入前台",
-          "showText": true,
-          "speakVoice": false
-        },
-        {
-          "type": "delay",
-          "durationMs": 300
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "notify",
+            "message": "✅ REPEAT 触发：今日头条进入前台",
+            "showText": true,
+            "speakVoice": false
+          },
+          {
+            "type": "delay",
+            "durationMs": 300
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 0,
         "cooldownMs": 0,

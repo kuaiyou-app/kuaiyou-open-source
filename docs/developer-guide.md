@@ -1,6 +1,6 @@
 # 技能编写与联调手册
 
-如何用 AI 编写并联调 Android 端侧**技能**（契约见 [`schema.json`](../schema.json)）。
+如何用 AI 编写并联调 Android 端侧**技能**。权威契约由已开启 MCP 服务的 App 通过 `GET /api/mcp/schema` 提供；本文示例仅说明用法，不构成字段或默认值定义。
 
 ## 1. 执行模型
 
@@ -9,12 +9,12 @@
 ### 1.1 不要再使用的字段与动作
 - **`agentId`**：已剔除，生成的 JSON 不要带此字段。
 - **`readText` / `setClipboard`**：已移除；请用 `storeValue`（`source.type=screen|template`）。
-- **校验**：以 [`schema.json`](../schema.json) 与 MCP Zod/lint 为准，详见 [reactive-skill-api-reference.md](./reactive-skill-api-reference.md)。
+- **校验**：CLI 实时获取客户端 Schema 并追加引用、循环等业务 lint，详见 [reactive-skill-api-reference.md](./reactive-skill-api-reference.md)。
 - **`askAgent`**：执行期外联大模型已拦截；逻辑请用本地动作（`tap` / `swipe` / `launchApp` / `delay` 等）闭环。
 
 ## 2. 编写规范（基于 Schema）
 
-建议将 `schema.json` 挂到 IDE，用 JSON Schema 补全。
+需要 IDE 补全时，请调用 `get_kuaiyou_schema`，或直接从当前 App 的 `GET /api/mcp/schema` 获取契约，不要在项目中保存长期副本。
 
 ### 2.1 目标 (Goal) 与 触发器 (Trigger)
 核心是 `goals` 数组。每个目标有触发条件 `trigger`：
@@ -48,7 +48,11 @@
 - **语义点击**：如 `{"type": "semantic", "description": "红色的点赞按钮"}`。
 - **相对滑动**：在 `swipe.target` 指定面板后，`startXPct` 等百分比相对该面板计算。
 
-### 2.4 全局拦截器 (Interrupts)
+### 2.4 逐项执行 (`forEach`)
+
+`forEach` 用于按客户端当前契约声明的来源逐项串行执行动作。详细字段、限制与默认值始终以 `GET /api/mcp/schema` 返回内容为准。
+
+### 2.5 全局拦截器 (Interrupts)
 弹窗打断主流程时，在 `interrupts` 中声明拦截器：
 ```json
 {

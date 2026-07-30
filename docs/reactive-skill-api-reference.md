@@ -1,146 +1,36 @@
-# ReactiveSkill API 协议参考手册（Schema v2）
+# 技能契约获取与校验
 
-`ReactiveSkill` 是快游大师的反应式自动化描述协议。**契约源头是 App 客户端**（Kotlin `@Serializable` 模型：`GoalAction` / `ReactiveSkill`）：客户端 release 时由 Gradle `generateMcpSkillSchema` 导出 Schema，仓库根目录的 [`schema.json`](../schema.json) 是它的镜像，请勿单独编辑。MCP 的 Zod 校验是该契约的投影，闭合枚举由 `scripts/check-enum-parity.mjs` 校验与 `schema.json` 一致。
+技能 JSON 的唯一权威契约由当前连接的快游大师 App 客户端维护。开启 MCP 服务后，客户端通过 `GET /api/mcp/schema` 提供实时 JSON Schema；仓库、CLI 源码和 npm 包均不保存长期副本。
 
-> 本文档仅描述 **v2** 词表。旧文档中的 `ClickAction`、`TextTargetSelector`、`AllGoalsComplete`、`Timeout`+`timeoutMs`、`agentId` 等 **一律无效**。
+## MCP 工作流
 
-## 1. JSON 结构总览
+1. 调用 `get_kuaiyou_schema` 获取当前客户端契约，再据此生成技能 JSON。
+2. 调用 `validate_kuaiyou_skill`。CLI 会重新请求 `GET /api/mcp/schema`，使用本次响应编译校验器并返回字段级错误。
+3. 调用 `push_reactive_skill`。CLI 会再次获取客户端契约；只有实时契约校验及附加安全检查通过后，才会请求 `POST /api/mcp/import`。
+4. 手机端显示导入确认框，用户确认后技能才会落盘。
 
-```json
-{
-  "id": "skill_unique_id",
-  "name": "每日签到",
-  "description": "自动打开任务页并点击签到",
-  "executionMode": "REACTIVE",
-  "launchApp": {
-    "type": "launchApp",
-    "packageName": "com.example.app"
-  },
-  "termination": { "type": "allGoalsDone" },
-  "goals": []
-}
+每次校验和推送都重新访问客户端。CLI 仅在端点和响应文本完全相同时复用已编译校验器，不会跳过网络请求，也不会在客户端不可用时回退到本地契约。
+
+## 直接访问端点
+
+非 MCP 调试场景可直接请求客户端：
+
+```bash
+curl "http://<DEVICE_IP>:<PORT>/api/mcp/schema" \
+  -H "Authorization: Bearer <PAIRING_CODE>"
 ```
 
-### 关键字段
+地址、端口和配对码以 App 当前复制的 MCP 配置为准。配对码会在 MCP 服务重启后变化，禁止写入仓库、文档示例的真实值或日志。
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `id` / `name` / `description` | 是 | 元数据 |
-| `goals` | 是 | 至少一个 Goal |
-| `termination` | 否 | 默认等价 `allGoalsDone`；无限监听请用 `timeout` / `idleTimeout` / `manual` |
-| `launchApp` | 否 | 全局启动应用，等价一个 `launchApp` 动作 |
-| `interrupts` | 否 | 全局弹窗拦截（`when` + `dismiss`） |
-| `agentId` | **禁止下发** | MCP 导入会删除；勿写入对外技能 |
+## 失败策略
 
-### 禁止的动作类型
+- 未配置设备地址：提示设置 `KUAIYOU_DEVICE_URL`，或设置 App 显示的 `KUAIYOU_DEVICE_IP`。
+- 端点不可达、鉴权失败、返回非 JSON、返回内容不是可编译的 JSON Schema：校验与推送失败，不使用缓存或仓库文件兜底。
+- Schema 响应变化：立即编译并使用新契约，旧校验器失效。
 
-以下类型会被 MCP / App 导入门禁 **硬拒绝**（不要写进技能）：
+## 仓库边界
 
-- `askAgent` — 非端上可执行
-- `readText` — 已移除，改用 `storeValue` + `source.type=screen`
-- `setClipboard` — 已移除，改用 `storeValue` + `source.type=template` + `copyToClipboard: true`
-
----
-
-## 2. Goal
-
-```json
-{
-  "id": "step_1",
-  "name": "点击签到按钮",
-  "trigger": { "type": "immediate" },
-  "action": {
-    "type": "tap",
-    "target": { "type": "text", "text": "签到领金币", "exact": true }
-  },
-  "constraints": {
-    "maxExecutions": 1,
-    "cooldownMs": 0,
-    "continueOnFailure": false,
-    "enabled": true
-  }
-}
-```
-
-- 非 `immediate` 触发的 Goal **必须**带 `action` 或 `actions`
-- `afterGoal.goalId` / `runStep.goalId` 必须引用已存在的 goal `id`，且不能成环
-- `constraints` 各字段可选（缺省见 `schema.json` 默认值）
-
-### 常用 trigger.type
-
-`immediate` · `elementVisible` · `elementGone` · `appInForeground` · `afterGoal` · `delayedAfterGoal` · `anyOf` · `allOf`
-
-### 常用 target.type
-
-`text`（+ 可选 `exact`）· `desc` · `id`（`viewId`）· `semantic` · `pos`（脆弱，尽量少用）· `image` · `composite`
-
----
-
-## 3. 动作（GoalAction）
-
-判别字段一律为小写 camelCase 的 `type`。
-
-| type | 要点 |
-|------|------|
-| `tap` / `longTap` | 需要 `target` |
-| `typeText` | `text` + `target`；粘贴用 `mode: "PASTE"` |
-| `swipe` | 全屏百分比或相对 `target` 锚点 |
-| `scrollTo` | `target` + `direction` |
-| `launchApp` | `packageName` |
-| `systemAction` | `systemType`: `BACK` / `HOME` / … |
-| `storeValue` | 见下节 |
-| `notify` | `message` |
-| `delay` | `durationMs` |
-| `waitFor` / `assertion` | `condition` |
-| `conditionBranch` | `condition` + `onTrue` / `onFalse` |
-| `loop` / `runStep` / `captureScreenshot` | 见 `schema.json` |
-
-### storeValue（读写变量 / 剪贴板）
-
-读取屏幕：
-
-```json
-{
-  "type": "storeValue",
-  "source": { "type": "screen", "target": { "type": "id", "viewId": "com.app:id/title" } },
-  "variableName": "title"
-}
-```
-
-写入剪贴板：
-
-```json
-{
-  "type": "storeValue",
-  "source": { "type": "template", "text": "要复制的文本 {{title}}" },
-  "copyToClipboard": true
-}
-```
-
----
-
-## 4. termination.type
-
-| type | 说明 |
-|------|------|
-| `allGoalsDone` | 所有目标完成后结束（默认） |
-| `anyGoalDone` | 任一目标完成 |
-| `manual` | 手动停止 |
-| `timeout` | 需要 `maxDurationMs` |
-| `idleTimeout` | 需要 `maxIdleMs` |
-
----
-
-## 5. 校验与部署
-
-1. 用 MCP `validate_kuaiyou_skill`（或 CI `scripts/validate-skills.mjs`）校验
-2. `push_reactive_skill` **会先跑同一套校验**，失败则拒绝部署
-3. 局域网部署需配置 `KUAIYOU_MCP_PAIRING_CODE`（App 设置里复制的 6 位配对码；兼容旧名 `KUAIYOU_MCP_TOKEN`），请求带 `Authorization: Bearer <code>`
-4. 部署仅通过局域网 HTTP：`POST /api/mcp/import`；手机端弹出确认框后才落盘（响应含 `pendingConfirm`）
-
-常见坑：
-
-1. **悬空引用**：`afterGoal` / `runStep` 指向不存在的 `goalId`
-2. **V1 词表**：`ClickAction` / `AllGoalsComplete` / `Timeout` 会被拒绝或警告
-3. **坐标脆弱性**：优先 `text` / `id` / `semantic`，少用 `pos`
-4. **无限 REPEAT**：`executionMode: REPEAT` + `maxExecutions: 0` 且无 `timeout` termination 时校验器会警告可能永不停止
+- 示例技能仅用于演示，不构成字段、枚举、默认值或兼容性承诺。
+- `scripts/validate-skills.mjs` 只进行离线 JSON、引用和业务规则检查，不能替代客户端契约校验。
+- 不应新增 Schema 镜像、Schema 生成脚本、枚举对照表或依赖本地契约的 CI 检查。
+- 编写字段、动作、触发器或选择器时，始终以当次 `get_kuaiyou_schema` 返回内容为准。

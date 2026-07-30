@@ -2,7 +2,6 @@
   "id": "reactive_test_toutiao_openai_repeat_flow",
   "name": "今日头条搜索 OpenAI官宣 + REPEAT 重读测试",
   "description": "搜索 OpenAI，滚动查找含官宣的文章并进入详情，读取标题后自动按 HOME 离开再重启头条，验证 REPEAT goal 在 appInForeground false→true 过渡时重新触发并再次读取内容。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
@@ -11,21 +10,26 @@
       "trigger": {
         "type": "immediate"
       },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        },
-        {
-          "type": "notify",
-          "message": "①启动今日头条",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "launchApp",
+            "packageName": "com.ss.android.article.news",
+            "appName": "今日头条",
+            "delayMs": 500,
+            "timeoutMs": 8000
+          },
+          {
+            "type": "notify",
+            "message": "①启动今日头条",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -42,42 +46,47 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": {
-              "type": "desc",
-              "desc": "听一听开关"
-            }
-          },
-          "onTrue": [
-            {
-              "type": "delay",
-              "durationMs": 400
-            }
-          ],
-          "onFalse": [
-            {
-              "type": "systemAction",
-              "systemType": "BACK",
-              "delayMs": 300
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "conditionBranch",
+            "condition": {
+              "type": "elementVisible",
+              "target": {
+                "type": "desc",
+                "desc": "听一听开关"
+              }
             },
-            {
-              "type": "delay",
-              "durationMs": 1200
-            }
-          ],
-          "timeoutMs": 1200
-        },
-        {
-          "type": "notify",
-          "message": "②已确认首页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+            "onTrue": [
+              {
+                "type": "delay",
+                "durationMs": 400
+              }
+            ],
+            "onFalse": [
+              {
+                "type": "systemAction",
+                "systemType": "BACK",
+                "delayMs": 300
+              },
+              {
+                "type": "delay",
+                "durationMs": 1200
+              }
+            ],
+            "timeoutMs": 1200
+          },
+          {
+            "type": "notify",
+            "message": "②已确认首页",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -106,23 +115,28 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/ki9"
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "tap",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/ki9"
+            },
+            "delayMs": 300,
+            "timeoutMs": 2000
           },
-          "delayMs": 300,
-          "timeoutMs": 2000
-        },
-        {
-          "type": "notify",
-          "message": "③已点击搜索入口",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "③已点击搜索入口",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -158,26 +172,31 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "typeText",
-          "text": "OpenAI",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/cx"
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "typeText",
+            "text": "OpenAI",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/cx"
+            },
+            "clearFirst": true,
+            "mode": "DEFAULT",
+            "delayMs": 300,
+            "timeoutMs": 2500
           },
-          "clearFirst": true,
-          "mode": "DEFAULT",
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "④已输入 OpenAI",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "④已输入 OpenAI",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -206,23 +225,28 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/e0"
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "tap",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/e0"
+            },
+            "delayMs": 300,
+            "timeoutMs": 2500
           },
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "⑤已提交搜索，等待结果页…",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "⑤已提交搜索，等待结果页…",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -239,26 +263,31 @@
         "type": "afterGoal",
         "goalId": "submit_search"
       },
-      "actions": [
-        {
-          "type": "waitFor",
-          "condition": {
-            "type": "elementVisible",
-            "target": {
-              "type": "text",
-              "text": "OpenAI",
-              "exact": false
-            }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "waitFor",
+            "condition": {
+              "type": "elementVisible",
+              "target": {
+                "type": "text",
+                "text": "OpenAI",
+                "exact": false
+              }
+            },
+            "timeoutMs": 8000
           },
-          "timeoutMs": 8000
-        },
-        {
-          "type": "notify",
-          "message": "⑥搜索结果页已就绪，开始滚动查找官宣文章…",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "⑥搜索结果页已就绪，开始滚动查找官宣文章…",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -275,49 +304,54 @@
         "type": "afterGoal",
         "goalId": "wait_results"
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "⑦开始滚动查找官宣主题…",
-          "showText": true,
-          "speakVoice": false
-        },
-        {
-          "type": "scrollTo",
-          "target": {
-            "type": "composite",
-            "text": "官宣",
-            "textExact": false,
-            "index": 0
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "notify",
+            "message": "⑦开始滚动查找官宣主题…",
+            "showText": true,
+            "speakVoice": false
           },
-          "direction": "UP",
-          "scrollPath": {
-            "startXPct": 0.5,
-            "startYPct": 0.76,
-            "endXPct": 0.5,
-            "endYPct": 0.42,
-            "durationMs": 520
+          {
+            "type": "scrollTo",
+            "target": {
+              "type": "composite",
+              "text": "官宣",
+              "textExact": false,
+              "index": 0
+            },
+            "direction": "UP",
+            "scrollPath": {
+              "startXPct": 0.5,
+              "startYPct": 0.76,
+              "endXPct": 0.5,
+              "endYPct": 0.42,
+              "durationMs": 520
+            },
+            "maxScrolls": 8,
+            "scrollDurationMs": 450,
+            "settleDelayMs": 800,
+            "scrollRegion": {
+              "leftPct": 0.08,
+              "topPct": 0.3,
+              "rightPct": 0.92,
+              "bottomPct": 0.88
+            },
+            "tapWhenFound": true,
+            "delayMs": 800,
+            "timeoutMs": 12000
           },
-          "maxScrolls": 8,
-          "scrollDurationMs": 450,
-          "settleDelayMs": 800,
-          "scrollRegion": {
-            "leftPct": 0.08,
-            "topPct": 0.3,
-            "rightPct": 0.92,
-            "bottomPct": 0.88
-          },
-          "tapWhenFound": true,
-          "delayMs": 800,
-          "timeoutMs": 12000
-        },
-        {
-          "type": "notify",
-          "message": "⑧已滚动定位并点击官宣文章",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "⑧已滚动定位并点击官宣文章",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -334,47 +368,52 @@
         "type": "afterGoal",
         "goalId": "scroll_find_article"
       },
-      "actions": [
-        {
-          "type": "waitFor",
-          "condition": {
-            "type": "anyOf",
-            "conditions": [
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "分享",
-                  "exact": false
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "waitFor",
+            "condition": {
+              "type": "anyOf",
+              "conditions": [
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "分享",
+                    "exact": false
+                  }
+                },
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "评论",
+                    "exact": false
+                  }
+                },
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "收藏",
+                    "exact": false
+                  }
                 }
-              },
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "评论",
-                  "exact": false
-                }
-              },
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "收藏",
-                  "exact": false
-                }
-              }
-            ]
+              ]
+            },
+            "timeoutMs": 12000
           },
-          "timeoutMs": 12000
-        },
-        {
-          "type": "notify",
-          "message": "⑨已进入文章详情页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "⑨已进入文章详情页",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -404,28 +443,33 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "storeValue",
-          "source": {
-            "type": "screen",
-            "target": {
-              "type": "text",
-              "text": "OpenAI",
-              "exact": false
-            }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "storeValue",
+            "source": {
+              "type": "screen",
+              "target": {
+                "type": "text",
+                "text": "OpenAI",
+                "exact": false
+              }
+            },
+            "variableName": "article_title",
+            "delayMs": 300,
+            "timeoutMs": 3000
           },
-          "variableName": "article_title",
-          "delayMs": 300,
-          "timeoutMs": 3000
-        },
-        {
-          "type": "notify",
-          "message": "⑩首次读取：{{article_title}}",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "⑩首次读取：{{article_title}}",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -442,46 +486,51 @@
         "type": "afterGoal",
         "goalId": "read_title_once"
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "REPEAT 测试准备：即将按 HOME 键离开头条",
-          "showText": true,
-          "speakVoice": false
-        },
-        {
-          "type": "systemAction",
-          "systemType": "HOME",
-          "delayMs": 500
-        },
-        {
-          "type": "delay",
-          "durationMs": 2000
-        },
-        {
-          "type": "notify",
-          "message": "已离开头条，2 秒后重新启动触发 REPEAT…",
-          "showText": true,
-          "speakVoice": false
-        },
-        {
-          "type": "delay",
-          "durationMs": 2000
-        },
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 6000
-        },
-        {
-          "type": "notify",
-          "message": "已重新进入头条，等待 REPEAT goal 触发",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "notify",
+            "message": "REPEAT 测试准备：即将按 HOME 键离开头条",
+            "showText": true,
+            "speakVoice": false
+          },
+          {
+            "type": "systemAction",
+            "systemType": "HOME",
+            "delayMs": 500
+          },
+          {
+            "type": "delay",
+            "durationMs": 2000
+          },
+          {
+            "type": "notify",
+            "message": "已离开头条，2 秒后重新启动触发 REPEAT…",
+            "showText": true,
+            "speakVoice": false
+          },
+          {
+            "type": "delay",
+            "durationMs": 2000
+          },
+          {
+            "type": "launchApp",
+            "packageName": "com.ss.android.article.news",
+            "appName": "今日头条",
+            "delayMs": 500,
+            "timeoutMs": 6000
+          },
+          {
+            "type": "notify",
+            "message": "已重新进入头条，等待 REPEAT goal 触发",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -507,24 +556,29 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "🔁 REPEAT 触发：头条重新进入前台",
-          "showText": true,
-          "speakVoice": false
-        },
-        {
-          "type": "delay",
-          "durationMs": 500
-        },
-        {
-          "type": "notify",
-          "message": "🔁 REPEAT 验证通过：appInForeground false→true 重触发成功",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "notify",
+            "message": "🔁 REPEAT 触发：头条重新进入前台",
+            "showText": true,
+            "speakVoice": false
+          },
+          {
+            "type": "delay",
+            "durationMs": 500
+          },
+          {
+            "type": "notify",
+            "message": "🔁 REPEAT 验证通过：appInForeground false→true 重触发成功",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,

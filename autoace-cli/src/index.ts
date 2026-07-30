@@ -9,13 +9,17 @@ import {
 import * as fs from "fs/promises";
 import * as dotenv from "dotenv";
 import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
+import { type ContractValidator } from "./contract-schema-validator.js";
+import { fetchDeviceContractValidator } from "./device-schema.js";
 import {
   HttpStatusError,
   httpGetText,
   httpGetBuffer,
   httpPostJson,
   httpPostForm,
+  resolveDeviceBaseUrl,
   sniffImageMime,
+  withDeviceLock,
 } from "./device.js";
 
 dotenv.config();
@@ -25,10 +29,15 @@ dotenv.config();
 // even though device calls no longer go through a shell.
 const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+type ToolErrorResponse = {
+  content: Array<{ type: "text"; text: string }>;
+  isError: true;
+};
+
 const server = new Server(
   {
     name: "autoace-cli",
-    version: "1.0.5",
+    version: "1.0.6",
   },
   {
     capabilities: {
@@ -37,22 +46,26 @@ const server = new Server(
   }
 );
 
-const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
-const getDeviceBaseUrl = (ip: string) => {
-  return /:\d+$/.test(ip) ? `http://${ip}` : `http://${ip}:8080`;
+const getDeviceBaseUrl = () => {
+  try {
+    return resolveDeviceBaseUrl();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new McpError(ErrorCode.InvalidParams, `Invalid device address configuration: ${detail}`);
+  }
 };
 
 // The CLI talks to the device over the LAN HTTP channel only. These two
 // helpers keep the "no device" and "device unreachable" messages consistent
 // across every tool instead of repeating the guidance inline.
-function missingDeviceIp(toolName: string, logs = "") {
+function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
   return {
     content: [
       {
         type: "text",
         text:
           `${toolName} needs a device address.\n` +
-          `Set KUAIYOU_DEVICE_IP to the "ip:port" shown by the App under ` +
+          `Set KUAIYOU_DEVICE_URL to the full URL, or KUAIYOU_DEVICE_IP to the "ip:port" shown by the App under ` +
           `设置 → 高级设置 → MCP 服务, and KUAIYOU_MCP_PAIRING_CODE to the pairing code.` +
           (logs ? `\n\nLogs:\n${logs}` : ""),
       },
@@ -116,7 +129,7 @@ function devicePostFailure(
   what: string,
   res: { status: number; body: string; logs: string }
 ) {
-  if (!getDeviceIp()) return missingDeviceIp(toolName, res.logs);
+  if (!getDeviceBaseUrl()) return missingDeviceIp(toolName, res.logs);
   if (res.status === 404) return deviceRejected(what, 404, res.body, res.logs);
   if (res.status > 0) return deviceRejected(what, res.status, res.body, res.logs);
   return deviceHttpFailure(what, res.logs);
@@ -137,13 +150,51 @@ function toolNotImplemented(name: string, hint: string) {
   };
 }
 
+function schemaUnavailable(toolName: string, detail: string, logs: string): ToolErrorResponse {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text:
+          `${toolName} could not load the authoritative skill schema from the App.\n` +
+          `Ensure the App MCP service is enabled and GET /api/mcp/schema returns a valid JSON Schema.\n` +
+          `Reason: ${detail}\n\nLogs:\n${logs}`,
+      },
+    ],
+    isError: true,
+  };
+}
+
+async function loadDeviceContract(
+  toolName: string
+): Promise<{ ok: true; validator: ContractValidator } | { ok: false; response: ToolErrorResponse }> {
+  const baseUrl = getDeviceBaseUrl();
+  if (!baseUrl) {
+    return { ok: false, response: missingDeviceIp(toolName) };
+  }
+
+  const logs = `GET ${baseUrl}/api/mcp/schema\n`;
+  try {
+    return { ok: true, validator: await fetchDeviceContractValidator(baseUrl) };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ok: false, response: schemaUnavailable(toolName, detail, `${logs}Failed: ${detail}\n`) };
+  }
+}
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: "get_kuaiyou_schema",
+        description:
+          "Fetch the authoritative skill JSON Schema from the connected App via GET /api/mcp/schema.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "validate_kuaiyou_skill",
         description:
-          "Validate a JSON string or .json file path against the Kuaiyou skill schema (Zod + business lint).",
+          "Fetch the authoritative schema from the connected App, then validate a JSON string or .json file path and run business lint.",
         inputSchema: {
           type: "object",
           properties: {
@@ -158,7 +209,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Validate then deploy a skill JSON to the device over the LAN HTTP channel (requires App /api/mcp/import).",
+          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel.",
         inputSchema: {
           type: "object",
           properties: {
@@ -247,7 +298,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           type: "object",
           properties: {
             skillId: { type: "string" },
-            limit: { type: "number", description: "Max log lines (default 100)." },
+            limit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 1000,
+              description: "Max log lines (default 100, maximum 1000).",
+            },
           },
           required: ["skillId"],
         },
@@ -324,12 +380,11 @@ async function resolveSkillJsonInput(skillJson: string): Promise<string> {
 async function deviceApiGet(
   pathname: string
 ): Promise<{ ok: true; text: string } | { ok: false; logs: string; status?: number }> {
-  const ip = getDeviceIp();
   let logs = "";
-  if (!ip) {
-    return { ok: false, logs: "KUAIYOU_DEVICE_IP is not set.\n" };
+  const baseUrl = getDeviceBaseUrl();
+  if (!baseUrl) {
+    return { ok: false, logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
   }
-  const baseUrl = getDeviceBaseUrl(ip);
   logs += `GET ${baseUrl}${pathname}\n`;
   try {
     const text = await httpGetText(`${baseUrl}${pathname}`);
@@ -346,7 +401,7 @@ async function deviceApiGet(
  * "not available on this App build" sent people chasing the wrong thing.
  */
 function deviceGetFailure(toolName: string, what: string, res: { logs: string; status?: number }) {
-  if (!getDeviceIp()) return missingDeviceIp(toolName, res.logs);
+  if (!getDeviceBaseUrl()) return missingDeviceIp(toolName, res.logs);
   if (res.status === 404) return toolNotImplemented(toolName, res.logs);
   // A status at all means the device answered; only a missing status is a transport failure.
   if (res.status !== undefined) return deviceRejected(what, res.status, "", res.logs);
@@ -354,26 +409,39 @@ function deviceGetFailure(toolName: string, what: string, res: { logs: string; s
 }
 
 async function deviceApiPost(pathname: string, body: object): Promise<{ ok: boolean; status: number; body: string; logs: string }> {
-  const ip = getDeviceIp();
-  let logs = "";
-  if (!ip) {
-    return { ok: false, status: 0, body: "", logs: "KUAIYOU_DEVICE_IP is not set.\n" };
-  }
-  const baseUrl = getDeviceBaseUrl(ip);
-  logs += `POST ${baseUrl}${pathname}\n`;
-  try {
-    const response = await httpPostJson(`${baseUrl}${pathname}`, JSON.stringify(body));
-    logs += `HTTP ${response.status} ${response.statusText}\n`;
-    if (response.body) logs += `Body: ${response.body.slice(0, 2000)}\n`;
-    return { ok: response.ok, status: response.status, body: response.body, logs };
-  } catch (e: any) {
-    logs += `HTTP failed: ${e.message}\n`;
-    return { ok: false, status: 0, body: "", logs };
-  }
+  return withDeviceLock(async () => {
+    const baseUrl = getDeviceBaseUrl();
+    let logs = "";
+    if (!baseUrl) {
+      return { ok: false, status: 0, body: "", logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
+    }
+    logs += `POST ${baseUrl}${pathname}\n`;
+    try {
+      const response = await httpPostJson(`${baseUrl}${pathname}`, JSON.stringify(body));
+      logs += `HTTP ${response.status} ${response.statusText}\n`;
+      if (response.body) logs += `Body: ${response.body.slice(0, 2000)}\n`;
+      return { ok: response.ok, status: response.status, body: response.body, logs };
+    } catch (e: any) {
+      logs += `HTTP failed: ${e.message}\n`;
+      return { ok: false, status: 0, body: "", logs };
+    }
+  });
 }
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
+    case "get_kuaiyou_schema": {
+      const res = await deviceApiGet("/api/mcp/schema");
+      if (!res.ok) {
+        return deviceGetFailure(
+          "get_kuaiyou_schema",
+          "fetch the authoritative skill schema",
+          res
+        );
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
     case "validate_kuaiyou_skill": {
       const { skillJson } = request.params.arguments as any;
       if (!skillJson) {
@@ -381,7 +449,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const content = await resolveSkillJsonInput(skillJson);
-      const result = validateSkillPayload(content);
+      const parsed = validateSkillPayload(content);
+      if (parsed.parsed === null || parsed.errors.length > 0) {
+        return {
+          content: [{ type: "text", text: formatLintResult(parsed) }],
+          isError: true,
+        };
+      }
+
+      const contract = await loadDeviceContract("validate_kuaiyou_skill");
+      if (!contract.ok) return contract.response;
+
+      const result = validateSkillPayload(parsed.parsed, contract.validator);
       return {
         content: [{ type: "text", text: formatLintResult(result) }],
         isError: !result.ok,
@@ -400,7 +479,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      const lint = validateSkillPayload(skillJson);
+      const parsed = validateSkillPayload(skillJson);
+      if (parsed.parsed === null || parsed.errors.length > 0) {
+        return {
+          content: [{ type: "text", text: `Refusing to deploy — ${formatLintResult(parsed)}` }],
+          isError: true,
+        };
+      }
+
+      const contract = await loadDeviceContract("push_reactive_skill");
+      if (!contract.ok) return contract.response;
+
+      const lint = validateSkillPayload(parsed.parsed, contract.validator);
       if (!lint.ok) {
         return {
           content: [{ type: "text", text: `Refusing to deploy — ${formatLintResult(lint)}` }],
@@ -411,52 +501,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let processedObj: any =
         lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(skillJson);
       delete processedObj.agentId;
+      if (processedObj.id !== skillId) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `skillId argument "${skillId}" does not match skillJson.id "${String(processedObj.id)}"`
+        );
+      }
       const processedJson = JSON.stringify(processedObj, null, 2);
 
-      const ip = getDeviceIp();
+      const baseUrl = getDeviceBaseUrl();
       let logs = "";
       if (lint.warnings.length > 0) {
         logs += `Warnings:\n${lint.warnings.map((w) => `- ${w}`).join("\n")}\n\n`;
       }
 
-      if (!ip) return missingDeviceIp("push_reactive_skill", logs);
+      if (!baseUrl) return missingDeviceIp("push_reactive_skill", logs);
 
-      const baseUrl = getDeviceBaseUrl(ip);
       logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
-      try {
-        let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
-        // Backward-compatible fallback for older App builds that still expect form posts.
-        if (response.status === 415 || response.status === 400) {
-          const formData = new URLSearchParams();
-          formData.append("postData", processedJson);
-          response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
-        }
+      return withDeviceLock(async () => {
+        try {
+          let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
+          // Backward-compatible fallback for older App builds that still expect form posts.
+          if (response.status === 415 || response.status === 400) {
+            const formData = new URLSearchParams();
+            formData.append("postData", processedJson);
+            response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
+          }
 
-        if (response.ok) {
-          logs += `HTTP push successful!\n`;
+          if (response.ok) {
+            logs += `HTTP push successful!\n`;
+            if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
+            return {
+              content: [{ type: "text" as const, text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
+            };
+          }
+          logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
           if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-          return {
-            content: [{ type: "text", text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
-          };
+          // The device answered — this is a rejection, not a broken channel.
+          return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
+        } catch (e: any) {
+          logs += `HTTP push failed: ${e.message}\n`;
         }
-        logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
-        if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-        // The device answered — this is a rejection, not a broken channel.
-        return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
-      } catch (e: any) {
-        logs += `HTTP push failed: ${e.message}\n`;
-      }
 
-      return deviceHttpFailure("deploy the skill", logs);
+        return deviceHttpFailure("deploy the skill", logs);
+      });
     }
 
     case "get_ui_tree": {
-      const ip = getDeviceIp();
       let logs = "";
+      const baseUrl = getDeviceBaseUrl();
 
-      if (!ip) return missingDeviceIp("get_ui_tree", logs);
+      if (!baseUrl) return missingDeviceIp("get_ui_tree", logs);
 
-      const baseUrl = getDeviceBaseUrl(ip);
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
       try {
         const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
@@ -483,12 +579,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "capture_screenshot": {
-      const ip = getDeviceIp();
       let logs = "";
+      const baseUrl = getDeviceBaseUrl();
 
-      if (!ip) return missingDeviceIp("capture_screenshot", logs);
+      if (!baseUrl) return missingDeviceIp("capture_screenshot", logs);
 
-      const baseUrl = getDeviceBaseUrl(ip);
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
       try {
         const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
@@ -547,6 +642,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "stop_skill": {
       const { skillId } = (request.params.arguments as any) || {};
+      if (skillId !== undefined && (typeof skillId !== "string" || !SKILL_ID_PATTERN.test(skillId))) {
+        throw new McpError(ErrorCode.InvalidParams, "skillId must be valid when provided");
+      }
       const res = await deviceApiPost("/api/mcp/stop", skillId ? { skillId } : {});
       if (!res.ok) {
         return devicePostFailure("stop_skill", "stop the running skill", res);
@@ -571,7 +669,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
         throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
       }
-      const q = new URLSearchParams({ skillId, limit: String(limit ?? 100) });
+      const normalizedLimit = limit ?? 100;
+      if (!Number.isInteger(normalizedLimit) || normalizedLimit < 1 || normalizedLimit > 1000) {
+        throw new McpError(ErrorCode.InvalidParams, "limit must be an integer between 1 and 1000");
+      }
+      const q = new URLSearchParams({ skillId, limit: String(normalizedLimit) });
       const res = await deviceApiGet(`/api/mcp/logs?${q.toString()}`);
       if (!res.ok) {
         return deviceGetFailure("get_execution_log", "read the execution log", res);
