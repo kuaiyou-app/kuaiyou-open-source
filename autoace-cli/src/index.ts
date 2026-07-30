@@ -13,6 +13,8 @@ import { type ContractValidator } from "./contract-schema-validator.js";
 import { fetchDeviceContractValidator } from "./device-schema.js";
 import {
   HttpStatusError,
+  clearDevicePairingSession,
+  ensureDevicePaired,
   httpGetText,
   httpGetBuffer,
   httpPostJson,
@@ -175,6 +177,7 @@ async function loadDeviceContract(
 
   const logs = `GET ${baseUrl}/api/mcp/schema\n`;
   try {
+    await ensureDevicePaired(baseUrl);
     return { ok: true, validator: await fetchDeviceContractValidator(baseUrl) };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -188,7 +191,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_kuaiyou_schema",
         description:
-          "Fetch the authoritative skill JSON Schema from the connected App via GET /api/mcp/schema.",
+          "Fetch the authoritative skill JSON Schema from the connected App via GET /api/mcp/schema. Also completes device pairing so the App settings page shows 已配对.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "pair_device",
+        description:
+          "Explicitly pair with the App MCP service (POST /api/mcp/pair). Updates the phone settings UI to 已配对. Other tools also auto-pair on first use.",
         inputSchema: { type: "object", properties: {} },
       },
       {
@@ -385,6 +394,12 @@ async function deviceApiGet(
   if (!baseUrl) {
     return { ok: false, logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
   }
+  try {
+    await ensureDevicePaired(baseUrl);
+  } catch (e: any) {
+    logs += `POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+    return { ok: false, logs, status: e instanceof HttpStatusError ? e.status : undefined };
+  }
   logs += `GET ${baseUrl}${pathname}\n`;
   try {
     const text = await httpGetText(`${baseUrl}${pathname}`);
@@ -415,6 +430,17 @@ async function deviceApiPost(pathname: string, body: object): Promise<{ ok: bool
     if (!baseUrl) {
       return { ok: false, status: 0, body: "", logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
     }
+    try {
+      await ensureDevicePaired(baseUrl);
+    } catch (e: any) {
+      logs += `POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+      return {
+        ok: false,
+        status: e instanceof HttpStatusError ? e.status : 0,
+        body: "",
+        logs,
+      };
+    }
     logs += `POST ${baseUrl}${pathname}\n`;
     try {
       const response = await httpPostJson(`${baseUrl}${pathname}`, JSON.stringify(body));
@@ -440,6 +466,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
       return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "pair_device": {
+      const baseUrl = getDeviceBaseUrl();
+      if (!baseUrl) return missingDeviceIp("pair_device");
+      let logs = `POST ${baseUrl}/api/mcp/pair\n`;
+      try {
+        clearDevicePairingSession();
+        await ensureDevicePaired(baseUrl);
+        logs += "paired=true\n";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Device paired. The App settings page should show 已配对.\n\nLogs:\n${logs}`,
+            },
+          ],
+        };
+      } catch (e: any) {
+        logs += `HTTP failed: ${e.message}\n`;
+        if (e instanceof HttpStatusError) {
+          return deviceRejected("pair", e.status, "", logs);
+        }
+        return deviceHttpFailure("pair", logs);
+      }
     }
 
     case "validate_kuaiyou_skill": {
@@ -555,6 +606,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
       try {
+        await ensureDevicePaired(baseUrl);
         const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
         try {
           const parsedJson = JSON.parse(jsonText);
@@ -586,6 +638,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
       try {
+        await ensureDevicePaired(baseUrl);
         const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
         const base64 = buffer.toString("base64");
         return {

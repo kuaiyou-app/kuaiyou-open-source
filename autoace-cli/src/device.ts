@@ -73,6 +73,35 @@ function authHeaders(): Record<string, string> {
   return code ? { Authorization: `Bearer ${code}` } : {};
 }
 
+/** Once per process+endpoint+code; drives App settings「已配对」via POST /api/mcp/pair. */
+let pairedSessionKey: string | undefined;
+
+export function clearDevicePairingSession(): void {
+  pairedSessionKey = undefined;
+}
+
+/**
+ * Explicit device handshake. Safe to call repeatedly; no-ops after success for the
+ * same baseUrl+pairing code. Older Apps without /pair (HTTP 404) are treated as
+ * already paired so tooling keeps working.
+ */
+export async function ensureDevicePaired(
+  baseUrl: string,
+  timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
+): Promise<void> {
+  const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN || "";
+  const key = `${baseUrl.replace(/\/+$/, "")}|${code}`;
+  if (pairedSessionKey === key) return;
+
+  const url = `${baseUrl.replace(/\/+$/, "")}/api/mcp/pair`;
+  const res = await httpPostJson(url, "{}", timeoutMs);
+  if (res.ok || res.status === 404) {
+    pairedSessionKey = key;
+    return;
+  }
+  throw new HttpStatusError(res.status, res.statusText || res.body.slice(0, 200));
+}
+
 // fetch() whose timeout covers the full response *including body consumption*.
 // The AbortController is only cleared after the body is read, unlike a naive
 // timeout that fires solely around the headers.

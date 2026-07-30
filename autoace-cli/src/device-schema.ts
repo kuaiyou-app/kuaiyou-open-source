@@ -1,5 +1,5 @@
 import { createContractValidator, type ContractValidator } from "./contract-schema-validator.js";
-import { httpGetText } from "./device.js";
+import { ensureDevicePaired, httpGetText } from "./device.js";
 
 type CachedValidator = {
   endpoint: string;
@@ -14,6 +14,7 @@ let cache: CachedValidator | undefined;
  * is reused only when the endpoint returns byte-for-byte identical JSON.
  */
 export async function fetchDeviceContractValidator(baseUrl: string): Promise<ContractValidator> {
+  await ensureDevicePaired(baseUrl);
   const endpoint = `${baseUrl}/api/mcp/schema`;
   const schemaText = await httpGetText(endpoint);
 
