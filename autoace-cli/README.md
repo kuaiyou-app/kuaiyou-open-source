@@ -1,6 +1,6 @@
 # autoace-cli
 
-**The Agentic Skills** - 快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Claude Code / Codex / Cursor 等连接 Android 上的「快游大师」App，编写并推送**智能体技能**。
+**The Agentic Skills** - 快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Claude Code / Codex / Cursor 等连接 Android 上的「快游大师」App，编写并推送**智能体技能**与**领域教练学习计划**。
 
 配套 Agent Skill 名称：**`autoace`**（仓库路径 `agent-skills/autoace/`）。
 
@@ -39,7 +39,25 @@ env:
 
 ## 契约获取
 
-CLI 不内置技能 Schema。本地 Agent 可调用 `get_kuaiyou_schema` 读取当前 App 的 `GET /api/mcp/schema` 响应；`validate_kuaiyou_skill` 和 `push_reactive_skill` 也会在执行时重新请求该端点，再使用实时响应进行校验。客户端是唯一契约源；未连接设备时不能执行完整契约校验。
+CLI **不内置**技能或学习计划 Schema。
+
+- 技能：`get_kuaiyou_schema` → `GET /api/mcp/schema`；`validate_kuaiyou_skill` / `push_reactive_skill` 运行时拉取同一端点。
+- 领域教练计划：`plans_schema` → `GET /api/mcp/plans/schema`；`plans_validate` / `plans_deploy` 运行时拉取该端点。**禁止**把 `learning-plan.schema.json` 镜像进本仓当权威。
+
+客户端是唯一契约源；未连接设备时不能执行完整契约校验。计划路由需 App 版本支持（与 `feat/mcp-plan-import` 联调）；若设备返回 404，工具会提示当前 App 尚未暴露该路由。
+
+### 计划 MCP tools（与设备 §3 对齐）
+
+| Tool | 设备路由 |
+|------|----------|
+| `plans_schema` | `GET /api/mcp/plans/schema` |
+| `plans_list` | `GET /api/mcp/plans` |
+| `plans_get` | `GET /api/mcp/plans/{id}` |
+| `plans_validate` | schema + `POST /api/mcp/plans/validate` |
+| `plans_deploy` | `POST /api/mcp/plans`（`pendingConfirm=true`，须手机确认） |
+| `plans_delete` | `POST /api/mcp/plans/delete` `{ "planId" }` |
+
+部署成功仅表示进入确认流；同 id 覆盖含进度；新 id 无保有槽返回 HTTP 409。
 
 也可全局安装：`npm install -g autoace-cli`，客户端 command 使用 `autoace-cli`。
 

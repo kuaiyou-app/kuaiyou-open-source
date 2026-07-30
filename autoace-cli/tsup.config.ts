@@ -7,6 +7,7 @@ export default defineConfig({
     'src/device-schema.ts',
     'src/contract-schema-validator.ts',
     'src/skill-lint.ts',
+    'src/plan-lint.ts',
   ],
   format: ['cjs', 'esm'],
   clean: true,

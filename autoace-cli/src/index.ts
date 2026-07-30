@@ -9,8 +9,13 @@ import {
 import * as fs from "fs/promises";
 import * as dotenv from "dotenv";
 import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
+import { formatPlanLintResult, validatePlanPayload } from "./plan-lint.js";
 import { type ContractValidator } from "./contract-schema-validator.js";
-import { fetchDeviceContractValidator } from "./device-schema.js";
+import {
+  fetchDeviceContractValidator,
+  PLAN_SCHEMA_PATH,
+  SKILL_SCHEMA_PATH,
+} from "./device-schema.js";
 import {
   HttpStatusError,
   clearDevicePairingSession,
@@ -26,10 +31,12 @@ import {
 
 dotenv.config();
 
-// skillId is interpolated into a device-side file path, so restrict it to a
+// skillId / planId are interpolated into device-side paths, so restrict to a
 // conservative charset. This blocks path traversal (../) and shell metacharacters
 // even though device calls no longer go through a shell.
-const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SKILL_ID_PATTERN = RESOURCE_ID_PATTERN;
+const PLAN_ID_PATTERN = RESOURCE_ID_PATTERN;
 
 type ToolErrorResponse = {
   content: Array<{ type: "text"; text: string }>;
@@ -39,7 +46,7 @@ type ToolErrorResponse = {
 const server = new Server(
   {
     name: "autoace-cli",
-    version: "1.0.6",
+    version: "1.0.7",
   },
   {
     capabilities: {
@@ -104,7 +111,7 @@ function deviceRejected(what: string, status: number, body: string, logs: string
     401: `The pairing code was rejected. It is regenerated every time the MCP service restarts — copy the current one from the App.`,
     403: `The device refused the request origin or host. Point KUAIYOU_DEVICE_IP at the exact address the App shows.`,
     404: `The device has no such route or resource (an older App build, or the skill id does not exist).`,
-    409: `The device refused to store this: usually the skill quota is full. Delete an unused skill (delete_skill) or upgrade, then push again.`,
+    409: `The device refused to store this: usually the skill or learning-plan quota is full. Delete an unused item (delete_skill / plans_delete) or upgrade, then push again.`,
     429: `Too many failed pairing-code attempts; the device is backing off. Wait for the Retry-After window, then use the current code.`,
     503: `The App cannot serve this right now — most often the accessibility permission is off, so the automation engine is not running.`,
   };
@@ -152,14 +159,20 @@ function toolNotImplemented(name: string, hint: string) {
   };
 }
 
-function schemaUnavailable(toolName: string, detail: string, logs: string): ToolErrorResponse {
+function schemaUnavailable(
+  toolName: string,
+  schemaPath: string,
+  kind: "skill" | "learning-plan",
+  detail: string,
+  logs: string
+): ToolErrorResponse {
   return {
     content: [
       {
         type: "text" as const,
         text:
-          `${toolName} could not load the authoritative skill schema from the App.\n` +
-          `Ensure the App MCP service is enabled and GET /api/mcp/schema returns a valid JSON Schema.\n` +
+          `${toolName} could not load the authoritative ${kind} schema from the App.\n` +
+          `Ensure the App MCP service is enabled and GET ${schemaPath} returns a valid JSON Schema.\n` +
           `Reason: ${detail}\n\nLogs:\n${logs}`,
       },
     ],
@@ -168,20 +181,25 @@ function schemaUnavailable(toolName: string, detail: string, logs: string): Tool
 }
 
 async function loadDeviceContract(
-  toolName: string
+  toolName: string,
+  schemaPath: string = SKILL_SCHEMA_PATH,
+  kind: "skill" | "learning-plan" = "skill"
 ): Promise<{ ok: true; validator: ContractValidator } | { ok: false; response: ToolErrorResponse }> {
   const baseUrl = getDeviceBaseUrl();
   if (!baseUrl) {
     return { ok: false, response: missingDeviceIp(toolName) };
   }
 
-  const logs = `GET ${baseUrl}/api/mcp/schema\n`;
+  const logs = `GET ${baseUrl}${schemaPath}\n`;
   try {
     await ensureDevicePaired(baseUrl);
-    return { ok: true, validator: await fetchDeviceContractValidator(baseUrl) };
+    return { ok: true, validator: await fetchDeviceContractValidator(baseUrl, schemaPath) };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return { ok: false, response: schemaUnavailable(toolName, detail, `${logs}Failed: ${detail}\n`) };
+    return {
+      ok: false,
+      response: schemaUnavailable(toolName, schemaPath, kind, detail, `${logs}Failed: ${detail}\n`),
+    };
   }
 }
 
@@ -317,6 +335,71 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["skillId"],
         },
       },
+      {
+        name: "plans_schema",
+        description:
+          "Fetch the authoritative LearningPlan JSON Schema from the App via GET /api/mcp/plans/schema. Schema is never bundled in this CLI — always runtime from the device.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "plans_list",
+        description:
+          "List domain-coach learning plans on the device (GET /api/mcp/plans). Summary fields: id, name, goal, phaseCount, nodeCount, updatedAt.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "plans_get",
+        description: "Fetch a full LearningPlan JSON by id (GET /api/mcp/plans/{id}).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            planId: { type: "string", description: "Plan id to fetch." },
+          },
+          required: ["planId"],
+        },
+      },
+      {
+        name: "plans_validate",
+        description:
+          "Validate a LearningPlan JSON against the device schema (GET /api/mcp/plans/schema), then POST /api/mcp/plans/validate for on-device structural/DAG checks. Does not persist.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            planJson: {
+              type: "string",
+              description: "LearningPlan JSON content or absolute .json file path.",
+            },
+          },
+          required: ["planJson"],
+        },
+      },
+      {
+        name: "plans_deploy",
+        description:
+          "Validate then deploy a LearningPlan to the device (POST /api/mcp/plans). Success means pendingConfirm=true — the user must confirm on the phone before it appears in 领域教练. Same id overwrites outline and progress; new id may return HTTP 409 if quota is full.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            planJson: {
+              type: "string",
+              description: "LearningPlan JSON content or absolute .json file path.",
+            },
+          },
+          required: ["planJson"],
+        },
+      },
+      {
+        name: "plans_delete",
+        description:
+          "Delete a learning plan immediately on the device (POST /api/mcp/plans/delete with { planId }). No confirmation dialog.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            planId: { type: "string", description: "Plan id to delete." },
+          },
+          required: ["planId"],
+        },
+      },
     ],
   };
 });
@@ -360,30 +443,38 @@ function enhanceUiNodes(data: any): any {
 }
 
 
-async function resolveSkillJsonInput(skillJson: string): Promise<string> {
+async function resolveJsonFileOrContent(input: string, paramName: string): Promise<string> {
   // Only treat as a file path when it looks like one and ends with .json.
   const looksLikePath =
-    skillJson.endsWith(".json") &&
-    (skillJson.startsWith("/") ||
-      skillJson.startsWith("./") ||
-      skillJson.startsWith("../") ||
-      /^[A-Za-z]:[\\/]/.test(skillJson));
-  if (!looksLikePath) return skillJson;
+    input.endsWith(".json") &&
+    (input.startsWith("/") ||
+      input.startsWith("./") ||
+      input.startsWith("../") ||
+      /^[A-Za-z]:[\\/]/.test(input));
+  if (!looksLikePath) return input;
 
   try {
-    const stat = await fs.stat(skillJson);
+    const stat = await fs.stat(input);
     if (!stat.isFile()) {
-      throw new McpError(ErrorCode.InvalidParams, `skillJson path is not a file: ${skillJson}`);
+      throw new McpError(ErrorCode.InvalidParams, `${paramName} path is not a file: ${input}`);
     }
-    if (!skillJson.toLowerCase().endsWith(".json")) {
-      throw new McpError(ErrorCode.InvalidParams, "File path skillJson must end with .json");
+    if (!input.toLowerCase().endsWith(".json")) {
+      throw new McpError(ErrorCode.InvalidParams, `File path ${paramName} must end with .json`);
     }
-    return await fs.readFile(skillJson, "utf8");
+    return await fs.readFile(input, "utf8");
   } catch (e: any) {
     if (e instanceof McpError) throw e;
     // Path-looking string that does not exist: fall through as JSON body.
-    return skillJson;
+    return input;
   }
+}
+
+async function resolveSkillJsonInput(skillJson: string): Promise<string> {
+  return resolveJsonFileOrContent(skillJson, "skillJson");
+}
+
+async function resolvePlanJsonInput(planJson: string): Promise<string> {
+  return resolveJsonFileOrContent(planJson, "planJson");
 }
 
 async function deviceApiGet(
@@ -732,6 +823,157 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return deviceGetFailure("get_execution_log", "read the execution log", res);
       }
       return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "plans_schema": {
+      const res = await deviceApiGet(PLAN_SCHEMA_PATH);
+      if (!res.ok) {
+        return deviceGetFailure(
+          "plans_schema",
+          "fetch the authoritative learning-plan schema",
+          res
+        );
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "plans_list": {
+      const res = await deviceApiGet("/api/mcp/plans");
+      if (!res.ok) {
+        return deviceGetFailure("plans_list", "list the learning plans on the device", res);
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "plans_get": {
+      const { planId } = request.params.arguments as any;
+      if (!planId || typeof planId !== "string" || !PLAN_ID_PATTERN.test(planId)) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "planId must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        );
+      }
+      const res = await deviceApiGet(`/api/mcp/plans/${encodeURIComponent(planId)}`);
+      if (!res.ok) {
+        return deviceGetFailure("plans_get", "fetch the learning plan", res);
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "plans_validate": {
+      const { planJson } = request.params.arguments as any;
+      if (!planJson) {
+        throw new McpError(ErrorCode.InvalidParams, "planJson is required");
+      }
+
+      const content = await resolvePlanJsonInput(planJson);
+      const parsed = validatePlanPayload(content);
+      if (parsed.parsed === null || parsed.errors.length > 0) {
+        return {
+          content: [{ type: "text", text: formatPlanLintResult(parsed) }],
+          isError: true,
+        };
+      }
+
+      const contract = await loadDeviceContract("plans_validate", PLAN_SCHEMA_PATH, "learning-plan");
+      if (!contract.ok) return contract.response;
+
+      const schemaResult = validatePlanPayload(parsed.parsed, contract.validator);
+      if (!schemaResult.ok) {
+        return {
+          content: [{ type: "text", text: formatPlanLintResult(schemaResult) }],
+          isError: true,
+        };
+      }
+
+      const body =
+        schemaResult.parsed && typeof schemaResult.parsed === "object"
+          ? schemaResult.parsed
+          : JSON.parse(content);
+      const res = await deviceApiPost("/api/mcp/plans/validate", body as object);
+      if (!res.ok) {
+        return devicePostFailure("plans_validate", "validate the learning plan", res);
+      }
+      const parts = [formatPlanLintResult(schemaResult)];
+      if (res.body.trim()) {
+        parts.push("", "Device validate response:", res.body.slice(0, 2000));
+      }
+      return { content: [{ type: "text", text: parts.join("\n") }] };
+    }
+
+    case "plans_deploy": {
+      const { planJson } = request.params.arguments as any;
+      if (!planJson) {
+        throw new McpError(ErrorCode.InvalidParams, "planJson is required");
+      }
+
+      const content = await resolvePlanJsonInput(planJson);
+      const parsed = validatePlanPayload(content);
+      if (parsed.parsed === null || parsed.errors.length > 0) {
+        return {
+          content: [{ type: "text", text: `Refusing to deploy — ${formatPlanLintResult(parsed)}` }],
+          isError: true,
+        };
+      }
+
+      const contract = await loadDeviceContract("plans_deploy", PLAN_SCHEMA_PATH, "learning-plan");
+      if (!contract.ok) return contract.response;
+
+      const lint = validatePlanPayload(parsed.parsed, contract.validator);
+      if (!lint.ok) {
+        return {
+          content: [{ type: "text", text: `Refusing to deploy — ${formatPlanLintResult(lint)}` }],
+          isError: true,
+        };
+      }
+
+      const planObj =
+        lint.parsed && typeof lint.parsed === "object" ? (lint.parsed as Record<string, unknown>) : null;
+      if (!planObj || typeof planObj.id !== "string" || !PLAN_ID_PATTERN.test(planObj.id)) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "planJson.id must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        );
+      }
+      const planId = planObj.id;
+
+      let prefix = "";
+      if (lint.warnings.length > 0) {
+        prefix = `Warnings:\n${lint.warnings.map((w) => `- ${w}`).join("\n")}\n\n`;
+      }
+
+      const res = await deviceApiPost("/api/mcp/plans", planObj);
+      if (!res.ok) {
+        return devicePostFailure("plans_deploy", "deploy the learning plan", {
+          ...res,
+          logs: prefix + res.logs,
+        });
+      }
+      const deviceBody = res.body.trim() ? `\n\nDevice response:\n${res.body.slice(0, 2000)}` : "";
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `${prefix}Successfully queued learning plan ${planId} for import.\n` +
+              `The device should return pendingConfirm=true — ask the user to confirm on the phone ` +
+              `before the plan appears in 领域教练. Same id overwrites outline and progress.` +
+              `${deviceBody}\n\nLogs:\n${res.logs}`,
+          },
+        ],
+      };
+    }
+
+    case "plans_delete": {
+      const { planId } = request.params.arguments as any;
+      if (!planId || typeof planId !== "string" || !PLAN_ID_PATTERN.test(planId)) {
+        throw new McpError(ErrorCode.InvalidParams, "valid planId is required");
+      }
+      const res = await deviceApiPost("/api/mcp/plans/delete", { planId });
+      if (!res.ok) {
+        return devicePostFailure("plans_delete", "delete the learning plan", res);
+      }
+      return { content: [{ type: "text", text: res.body || `Deleted ${planId}` }] };
     }
 
     default:
