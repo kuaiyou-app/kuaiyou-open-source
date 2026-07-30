@@ -1,6 +1,6 @@
 {
   "name": "autoace-cli",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "autoace-cli — MCP CLI for Kuaiyou Master Android automation. Lets Cursor/Claude control the phone and push skills.",
   "main": "./build/index.js",
   "bin": {
@@ -16,11 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test",
     "build": "tsup",
-    "build:schema": "npm run build && node scripts/build-schema.mjs",
-    "check:schema": "npm run build && node scripts/check-schema-compat.mjs",
     "prepack": "npm run build",
-    "start": "node build/index.js",
-    "check:enums": "npm run build:schema && node ../scripts/check-enum-parity.mjs"
+    "start": "node build/index.js"
   },
   "keywords": [
     "mcp",
@@ -47,15 +44,14 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "node": ">=18",
-    "npm": ">=9"
+    "node": ">=20",
+    "npm": ">=10"
   },
   "packageManager": "npm@10.9.2",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.20.0",
-    "dotenv": "^17.4.2",
-    "zod": "^4.4.3"
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

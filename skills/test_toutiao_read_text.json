@@ -2,7 +2,6 @@
   "id": "reactive_test_toutiao_read_text",
   "name": "今日头条读取文本测试",
   "description": "打开头条首页，进入搜索页后读取搜索框文本到变量并播报。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
@@ -11,15 +10,13 @@
       "trigger": {
         "type": "immediate"
       },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -35,36 +32,34 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": {
-              "type": "desc",
-              "desc": "听一听开关"
-            }
+      "action": {
+        "type": "conditionBranch",
+        "condition": {
+          "type": "elementVisible",
+          "target": {
+            "type": "desc",
+            "desc": "听一听开关"
+          }
+        },
+        "onTrue": [
+          {
+            "type": "delay",
+            "durationMs": 400
+          }
+        ],
+        "onFalse": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            {
-              "type": "delay",
-              "durationMs": 400
-            }
-          ],
-          "onFalse": [
-            {
-              "type": "systemAction",
-              "systemType": "BACK",
-              "delayMs": 300
-            },
-            {
-              "type": "delay",
-              "durationMs": 1200
-            }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          }
+        ],
+        "timeoutMs": 1200
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -92,16 +87,14 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/ki9"
-          },
-          "delayMs": 300
-        }
-      ],
+      "action": {
+        "type": "tap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/ki9"
+        },
+        "delayMs": 300
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -129,27 +122,32 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "storeValue",
-          "source": {
-            "type": "screen",
-            "target": {
-              "type": "id",
-              "viewId": "com.ss.android.article.news:id/cx"
-            }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "storeValue",
+            "source": {
+              "type": "screen",
+              "target": {
+                "type": "id",
+                "viewId": "com.ss.android.article.news:id/cx"
+              }
+            },
+            "variableName": "search_hint",
+            "delayMs": 300,
+            "timeoutMs": 2500
           },
-          "variableName": "search_hint",
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "读取到搜索框文本：{{search_hint}}",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "读取到搜索框文本：{{search_hint}}",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,

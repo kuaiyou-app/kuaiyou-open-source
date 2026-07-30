@@ -2,7 +2,6 @@
   "id": "reactive_test_toutiao_openai_article_flow",
   "name": "今日头条 OpenAI 文章综合流程测试",
   "description": "首页进入搜索页，输入 OpenAI，执行搜索，等待结果后滚动查找并点击包含 OpenAI 独家的结果进入详情，读取后通过 toast 展示。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
@@ -11,15 +10,13 @@
       "trigger": {
         "type": "immediate"
       },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -35,36 +32,34 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": {
-              "type": "desc",
-              "desc": "听一听开关"
-            }
+      "action": {
+        "type": "conditionBranch",
+        "condition": {
+          "type": "elementVisible",
+          "target": {
+            "type": "desc",
+            "desc": "听一听开关"
+          }
+        },
+        "onTrue": [
+          {
+            "type": "delay",
+            "durationMs": 400
+          }
+        ],
+        "onFalse": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            {
-              "type": "delay",
-              "durationMs": 400
-            }
-          ],
-          "onFalse": [
-            {
-              "type": "systemAction",
-              "systemType": "BACK",
-              "delayMs": 300
-            },
-            {
-              "type": "delay",
-              "durationMs": 1200
-            }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          }
+        ],
+        "timeoutMs": 1200
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -92,17 +87,15 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/ki9"
-          },
-          "delayMs": 300,
-          "timeoutMs": 2000
-        }
-      ],
+      "action": {
+        "type": "tap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/ki9"
+        },
+        "delayMs": 300,
+        "timeoutMs": 2000
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -137,20 +130,18 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "typeText",
-          "text": "OpenAI",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/cx"
-          },
-          "clearFirst": true,
-          "mode": "DEFAULT",
-          "delayMs": 300,
-          "timeoutMs": 2500
-        }
-      ],
+      "action": {
+        "type": "typeText",
+        "text": "OpenAI",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/cx"
+        },
+        "clearFirst": true,
+        "mode": "DEFAULT",
+        "delayMs": 300,
+        "timeoutMs": 2500
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -178,23 +169,28 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": {
-            "type": "id",
-            "viewId": "com.ss.android.article.news:id/e0"
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "tap",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/e0"
+            },
+            "delayMs": 300,
+            "timeoutMs": 2500
           },
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "已点击搜索按钮，等待结果页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "已点击搜索按钮，等待结果页",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -210,26 +206,31 @@
         "type": "afterGoal",
         "goalId": "submit_search"
       },
-      "actions": [
-        {
-          "type": "waitFor",
-          "condition": {
-            "type": "elementVisible",
-            "target": {
-              "type": "text",
-              "text": "OpenAI",
-              "exact": false
-            }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "waitFor",
+            "condition": {
+              "type": "elementVisible",
+              "target": {
+                "type": "text",
+                "text": "OpenAI",
+                "exact": false
+              }
+            },
+            "timeoutMs": 6000
           },
-          "timeoutMs": 6000
-        },
-        {
-          "type": "notify",
-          "message": "已进入搜索结果页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "已进入搜索结果页",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -245,36 +246,41 @@
         "type": "afterGoal",
         "goalId": "wait_results"
       },
-      "actions": [
-        {
-          "type": "scrollTo",
-          "target": {
-            "type": "composite",
-            "text": "独家",
-            "textExact": false,
-            "index": 0
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "scrollTo",
+            "target": {
+              "type": "composite",
+              "text": "独家",
+              "textExact": false,
+              "index": 0
+            },
+            "direction": "UP",
+            "maxScrolls": 5,
+            "scrollDurationMs": 420,
+            "settleDelayMs": 800,
+            "scrollRegion": {
+              "leftPct": 0.08,
+              "topPct": 0.32,
+              "rightPct": 0.92,
+              "bottomPct": 0.88
+            },
+            "tapWhenFound": true,
+            "delayMs": 1000,
+            "timeoutMs": 4500
           },
-          "direction": "UP",
-          "maxScrolls": 5,
-          "scrollDurationMs": 420,
-          "settleDelayMs": 800,
-          "scrollRegion": {
-            "leftPct": 0.08,
-            "topPct": 0.32,
-            "rightPct": 0.92,
-            "bottomPct": 0.88
-          },
-          "tapWhenFound": true,
-          "delayMs": 1000,
-          "timeoutMs": 4500
-        },
-        {
-          "type": "notify",
-          "message": "已滚动定位并点击目标文章",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "已滚动定位并点击目标文章",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -290,47 +296,52 @@
         "type": "afterGoal",
         "goalId": "open_target_article"
       },
-      "actions": [
-        {
-          "type": "waitFor",
-          "condition": {
-            "type": "anyOf",
-            "conditions": [
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "分享",
-                  "exact": false
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "waitFor",
+            "condition": {
+              "type": "anyOf",
+              "conditions": [
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "分享",
+                    "exact": false
+                  }
+                },
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "评论",
+                    "exact": false
+                  }
+                },
+                {
+                  "type": "elementVisible",
+                  "target": {
+                    "type": "text",
+                    "text": "收藏",
+                    "exact": false
+                  }
                 }
-              },
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "评论",
-                  "exact": false
-                }
-              },
-              {
-                "type": "elementVisible",
-                "target": {
-                  "type": "text",
-                  "text": "收藏",
-                  "exact": false
-                }
-              }
-            ]
+              ]
+            },
+            "timeoutMs": 10000
           },
-          "timeoutMs": 10000
-        },
-        {
-          "type": "notify",
-          "message": "已进入文章详情页",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "已进入文章详情页",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -359,28 +370,33 @@
           }
         ]
       },
-      "actions": [
-        {
-          "type": "storeValue",
-          "source": {
-            "type": "screen",
-            "target": {
-              "type": "text",
-              "text": "OpenAI",
-              "exact": false
-            }
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "storeValue",
+            "source": {
+              "type": "screen",
+              "target": {
+                "type": "text",
+                "text": "OpenAI",
+                "exact": false
+              }
+            },
+            "variableName": "article_title",
+            "delayMs": 300,
+            "timeoutMs": 2500
           },
-          "variableName": "article_title",
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "发现内容：{{article_title}}",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+          {
+            "type": "notify",
+            "message": "发现内容：{{article_title}}",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,

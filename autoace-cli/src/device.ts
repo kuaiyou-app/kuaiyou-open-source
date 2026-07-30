@@ -1,4 +1,7 @@
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
+const DEFAULT_TEXT_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024;
+const DEFAULT_IMAGE_RESPONSE_LIMIT_BYTES = 12 * 1024 * 1024;
+const DEFAULT_POST_RESPONSE_LIMIT_BYTES = 512 * 1024;
 
 /** Non-2xx response. Carries the status so callers can tell a missing route
  *  (404) apart from an unreachable device or a rejected pairing code. */
@@ -18,6 +21,52 @@ export class TimeoutError extends Error {
   }
 }
 
+export class ResponseTooLargeError extends Error {
+  readonly limitBytes: number;
+  constructor(limitBytes: number) {
+    super(`Response body exceeds the ${limitBytes}-byte limit`);
+    this.name = "ResponseTooLargeError";
+    this.limitBytes = limitBytes;
+  }
+}
+
+/**
+ * Resolve the device endpoint once, with an explicit URL taking precedence.
+ * KUAIYOU_DEVICE_IP remains an HTTP compatibility path for current App builds;
+ * KUAIYOU_DEVICE_URL lets a future TLS-capable App provide an https:// endpoint.
+ */
+export function resolveDeviceBaseUrl(
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  const explicitUrl = env.KUAIYOU_DEVICE_URL?.trim();
+  if (explicitUrl) {
+    let parsed: URL;
+    try {
+      parsed = new URL(explicitUrl);
+    } catch {
+      throw new Error("KUAIYOU_DEVICE_URL must be a valid http:// or https:// URL");
+    }
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password) {
+      throw new Error("KUAIYOU_DEVICE_URL must use http:// or https:// and must not contain credentials");
+    }
+    if (parsed.search || parsed.hash) {
+      throw new Error("KUAIYOU_DEVICE_URL must not contain a query string or fragment");
+    }
+    return explicitUrl.replace(/\/+$/, "");
+  }
+
+  const deviceIp = env.KUAIYOU_DEVICE_IP?.trim();
+  if (!deviceIp) return undefined;
+  if (deviceIp.includes("://") || /[/?#@]/.test(deviceIp)) {
+    throw new Error("KUAIYOU_DEVICE_IP must contain only a host or host:port; use KUAIYOU_DEVICE_URL for a full URL");
+  }
+  if (deviceIp.split(":").length > 2 && !deviceIp.startsWith("[")) {
+    throw new Error("IPv6 KUAIYOU_DEVICE_IP values must use bracket notation, for example [::1]:8080");
+  }
+  const hasPort = /:\d+$/.test(deviceIp) || /^\[[^\]]+\]:\d+$/.test(deviceIp);
+  return `http://${deviceIp}${hasPort ? "" : ":8080"}`;
+}
+
 function authHeaders(): Record<string, string> {
   // Prefer short pairing code; keep KUAIYOU_MCP_TOKEN as a compatibility alias.
   const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN;
@@ -27,19 +76,27 @@ function authHeaders(): Record<string, string> {
 // fetch() whose timeout covers the full response *including body consumption*.
 // The AbortController is only cleared after the body is read, unlike a naive
 // timeout that fires solely around the headers.
-export async function httpGetText(url: string, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS): Promise<string> {
+export async function httpGetText(
+  url: string,
+  timeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
+  maxBytes = DEFAULT_TEXT_RESPONSE_LIMIT_BYTES
+): Promise<string> {
   return withAbort(timeoutMs, async (signal) => {
     const res = await fetch(url, { signal, headers: authHeaders() });
     if (!res.ok) throw new HttpStatusError(res.status, res.statusText);
-    return res.text();
+    return (await readBodyLimited(res, maxBytes)).toString("utf8");
   });
 }
 
-export async function httpGetBuffer(url: string, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS): Promise<Buffer> {
+export async function httpGetBuffer(
+  url: string,
+  timeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
+  maxBytes = DEFAULT_IMAGE_RESPONSE_LIMIT_BYTES
+): Promise<Buffer> {
   return withAbort(timeoutMs, async (signal) => {
     const res = await fetch(url, { signal, headers: authHeaders() });
     if (!res.ok) throw new HttpStatusError(res.status, res.statusText);
-    return Buffer.from(await res.arrayBuffer());
+    return readBodyLimited(res, maxBytes);
   });
 }
 
@@ -58,7 +115,7 @@ export async function httpPostForm(
       },
       signal,
     });
-    const body = await res.text().catch(() => "");
+    const body = await readBodyTextOrEmpty(res, DEFAULT_POST_RESPONSE_LIMIT_BYTES);
     return { ok: res.ok, status: res.status, statusText: res.statusText, body };
   });
 }
@@ -79,9 +136,46 @@ export async function httpPostJson(
       },
       signal,
     });
-    const body = await res.text().catch(() => "");
+    const body = await readBodyTextOrEmpty(res, DEFAULT_POST_RESPONSE_LIMIT_BYTES);
     return { ok: res.ok, status: res.status, statusText: res.statusText, body };
   });
+}
+
+async function readBodyTextOrEmpty(res: Response, maxBytes: number): Promise<string> {
+  try {
+    return (await readBodyLimited(res, maxBytes)).toString("utf8");
+  } catch (error) {
+    if (error instanceof ResponseTooLargeError) throw error;
+    return "";
+  }
+}
+
+async function readBodyLimited(res: Response, maxBytes: number): Promise<Buffer> {
+  const declaredLength = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new ResponseTooLargeError(maxBytes);
+  }
+  if (!res.body) return Buffer.alloc(0);
+
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new ResponseTooLargeError(maxBytes);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, totalBytes);
 }
 
 async function withAbort<T>(timeoutMs: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {

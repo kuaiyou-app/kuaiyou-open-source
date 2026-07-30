@@ -17,7 +17,7 @@
 ## 组成
 
 1. **快游大师 App（手机）**：截屏 / 节点树，本地执行技能。
-2. **autoace-cli（电脑）**：MCP 工具——看屏、校验、推送技能。
+2. **autoace-cli（电脑）**：MCP 工具——看屏、读取客户端实时契约、校验、推送技能。
 3. **autoace（Agent Skill，可选）**：教 Agent 正确走 MCP / 回退同步流程。
 4. **AI 客户端**：Claude Code / Codex / Cursor / Claude Desktop 等。
 
@@ -33,7 +33,7 @@
 
 ### 2. 配置 autoace-cli
 
-需 **Node.js ≥ 18、npm ≥ 9**。`autoace-cli` 是 stdio MCP server，应注册到 MCP 客户端，而不是只在普通终端前台运行。
+需 **Node.js ≥ 20、npm ≥ 10**。`autoace-cli` 是 stdio MCP server，应注册到 MCP 客户端，而不是只在普通终端前台运行。
 
 包页：https://www.npmjs.com/package/autoace-cli
 
@@ -64,7 +64,7 @@
 
 ### Claude Code
 
-在 Claude Code 的 MCP 配置中增加同上 `autoace` 条目（command / args / env 相同）。配置后重启会话，确认工具列表出现 `get_ui_tree`、`push_reactive_skill` 等。
+在 Claude Code 的 MCP 配置中增加同上 `autoace` 条目（command / args / env 相同）。配置后重启会话，确认工具列表出现 `get_kuaiyou_schema`、`get_ui_tree`、`push_reactive_skill` 等。
 
 ### Codex
 
@@ -74,6 +74,7 @@
 > 因此 `KUAIYOU_DEVICE_IP` **必须带端口**（`ip:port`），并且每次重开服务后都要按 App 上的新值重填这两个环境变量；
 > 点击 App 里的「MCP 服务」条目可一次性复制完整 stdio 配置；Android 13+ 会把这段剪贴板内容标记为敏感。配对码兼容旧变量名 `KUAIYOU_MCP_TOKEN`。
 > 当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。
+> CLI 已支持 `KUAIYOU_DEVICE_URL=https://host:port`，供未来支持 TLS 的客户端优先使用；HTTP 模式请仅在可信、隔离的局域网内使用。
 >
 > 配对码连续输错会触发设备端退避（返回 `429` 并带 `Retry-After`），等提示的秒数后用当前配对码重试即可。配置后请重载 MCP；若当前会话不能热加载，则重启会话。
 
@@ -121,14 +122,17 @@ npx skills add kuaiyou-app/kuaiyou-open-source --skill autoace
 
 常用 MCP 工具：
 
+- `get_kuaiyou_schema`：读取当前 App 的权威技能契约
 - `get_ui_tree` / `capture_screenshot`
-- `validate_kuaiyou_skill`
-- `push_reactive_skill`
+- `validate_kuaiyou_skill`：重新获取客户端契约并校验
+- `push_reactive_skill`：再次获取客户端契约，校验通过后推送
 - （可选）`list_skills` / `run_skill` / `stop_skill` …
+
+推荐顺序：读取实时契约 → 看屏 → 生成技能 → 校验 → 推送。仓库中的示例不是契约定义；如果 App 未开启 MCP 服务或 `/api/mcp/schema` 不可用，CLI 不会使用本地文件兜底。
 
 示例提示词：
 
-> 请用 autoace MCP：先截屏并获取 UI 树，写一个自动点击「每日签到」的技能，校验通过后推送到手机。
+> 请用 autoace MCP：先读取当前客户端技能契约，再截屏并获取 UI 树，写一个自动点击「每日签到」的技能，校验通过后推送到手机。
 
 手机弹出确认后本地执行；不准就继续用自然语言改再推。
 

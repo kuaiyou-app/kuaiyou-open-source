@@ -1,6 +1,6 @@
 # 快游大师贡献指南 (Contributing to Kuaiyou Master)
 
-首先，感谢您花时间为快游大师贡献代码或技能库！快游大师是一个致力于普及端侧 AI 自动化编程生态的开源项目。无论您是修复 Bug、改进 MCP Server，还是用大模型捏出了一个好用的神仙脚本（ReactiveSkill），我们都热烈欢迎！
+首先，感谢您花时间为快游大师贡献代码或技能库！快游大师是一个致力于普及端侧 AI 自动化编程生态的开源项目。无论您是修复 Bug、改进 MCP Server，还是用大模型生成了实用的技能 JSON，我们都热烈欢迎！
 
 在参与社区贡献前，请确保您已阅读并同意我们的 [社区行为准则 (Code of Conduct)](./CODE_OF_CONDUCT.md)。我们致力于为所有人提供一个友好、包容的技术社区。
 ## 1. 我们需要什么贡献？
@@ -16,17 +16,20 @@
 
 我们极力推荐您通过 **Cursor / Claude 结合 MCP Server** 来生成技能，这比手写 JSON 效率高得多。
 
-### 提交要求：
+### 提交要求
+
 如果您想将一个技能合并到我们的官方案例库中，请确保您的 Pull Request 包含以下内容：
 
-1. **完整的 JSON 文件**：您的技能 JSON 文件（必须包含正确的 `id`, `name`, `description` 以及 `executionMode: "REACTIVE"`）。
-2. **适用版本声明**：说明这个技能是基于哪款 App 的哪个版本测试通过的。
-3. **效果演示**：请附带一段简短的 GIF 动图或视频链接，展示自动化脚本在真机上的运行过程。
+1. **经过实时契约校验的 JSON 文件**：开启 App MCP 服务，先调用 `get_kuaiyou_schema` 获取当前契约，再使用 `validate_kuaiyou_skill` 校验。不要提交或引用本地 Schema 副本。
+2. **适用版本声明**：说明校验和真机测试所使用的 App 版本。
+3. **效果演示**：请附带一段简短的 GIF 动图或视频链接，展示技能在真机上的运行过程。
+
+仓库的 `scripts/validate-skills.mjs` 只执行离线 JSON、引用和业务规则检查；它不能代替当前 App 的契约校验。
 
 ### 🌟 AI 辅助提交一键指令
 不知道怎么写 PR 描述？您可以直接复制下面这段提示词给您的 AI 助手：
 
-> "请帮我将当前测试成功的 ReactiveSkill JSON 整理成一个标准的 Markdown 提交提案。
+> "请帮我将当前测试成功的技能 JSON 整理成一个标准的 Markdown 提交提案。
 > 提案需包含：1. 技能名称与简介；2. 该技能解决了什么痛点；3. JSON 核心逻辑代码块；4. 提醒用户该技能适用的 App 版本。
 > 请按照 GitHub PR Template 的风格输出。"
 
@@ -67,7 +70,8 @@
    ```bash
    cd autoace-cli
    npm install
-   npm run build
+   npm run typecheck
+   npm test
    ```
 6. **提交代码 (Commit)**：
    我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。请使用规范的提交信息格式（例如 `feat: add new target selector` 或 `fix: mcp server adb fallback`）。

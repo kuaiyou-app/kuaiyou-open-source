@@ -20,7 +20,7 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
 ## Prerequisites
 
 1. Phone: Kuaiyou Master → Settings → Advanced → **MCP 服务** on. The pairing code is masked by default; click the service row to copy the complete stdio configuration.
-2. Computer: Node.js ≥ 18 and npm ≥ 9; register an MCP server named `autoace` with `command=npx`, `args=["-y","autoace-cli"]`, and the copied:
+2. Computer: Node.js ≥ 20 and npm ≥ 10; register an MCP server named `autoace` with `command=npx`, `args=["-y","autoace-cli"]`, and the copied:
    - `KUAIYOU_DEVICE_IP`
    - `KUAIYOU_MCP_PAIRING_CODE`
    Prefer user/local MCP configuration. Never write the pairing code into the repository, logs, docs, or Git commits.
@@ -32,8 +32,8 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
 ## Preferred flow (MCP)
 
 1. `capture_screenshot` and/or `get_ui_tree` to understand the current screen.
-2. Draft a skill JSON that matches the project `schema.json` (local actions only: `tap`, `swipe`, `delay`, `storeValue`, `launchApp`, …).
-3. `validate_kuaiyou_skill` — fix until valid.
+2. Call `get_kuaiyou_schema` to read the authoritative contract from the running client's `GET /api/mcp/schema`, then draft a matching skill JSON. Do not rely on a repository-local schema copy.
+3. `validate_kuaiyou_skill` — the CLI fetches the same client contract again; fix until valid.
 4. `push_reactive_skill` — wait for the user to confirm import/run on the phone.
 5. Iterate with natural language if the tap misses.
 
@@ -42,7 +42,14 @@ Do **not** use removed fields/actions: `agentId`, `readText`, `setClipboard`, `a
 ## Fallback sync (no MCP push)
 
 If MCP push is unavailable, save the skill JSON and post it over the LAN yourself.
-The pairing code is required — without the `Authorization` header the device answers `401`.
+Fetch the current contract first; never infer it from repository examples. The pairing code is required — without the `Authorization` header the device answers `401`.
+
+```bash
+curl "http://<DEVICE_IP>:<PORT>/api/mcp/schema" \
+  -H "Authorization: Bearer <PAIRING_CODE>"
+```
+
+Validate the generated JSON against that response before importing it.
 
 ```bash
 curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/import" \
@@ -53,18 +60,6 @@ curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/import" \
 
 A successful response looks like `{"status":"ok","skillId":"…","pendingConfirm":true}`;
 the phone then shows an import confirmation dialog.
-
-## Example skill shape
-
-```json
-{
-  "id": "my_unique_skill_id",
-  "name": "My skill",
-  "description": "What this skill does",
-  "executionMode": "REACTIVE",
-  "goals": []
-}
-```
 
 ## How users invoke this Agent Skill
 

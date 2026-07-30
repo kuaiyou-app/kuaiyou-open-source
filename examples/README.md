@@ -1,6 +1,6 @@
 # 技能示例
 
-符合当前 `schema.json` 的技能 JSON，可直接推送到快游大师执行，或作为编写参考。
+技能 JSON 示例，仅用于说明常见用法，不构成字段、枚举或默认值定义。使用前应通过 `get_kuaiyou_schema` 获取当前 App 的实时契约，再调用 `validate_kuaiyou_skill` 校验并推送。
 
 ## 示例索引
 

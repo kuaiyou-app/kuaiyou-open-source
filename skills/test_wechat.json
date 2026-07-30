@@ -2,22 +2,19 @@
   "id": "reactive_test_wechat",
   "name": "微信自动打开测试",
   "description": "反应式引擎实机验证：打开微信 → 等待首页出现 → 播报完成",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_wechat",
       "name": "启动微信",
       "priority": 10,
       "trigger": { "type": "immediate" },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.tencent.mm",
-          "appName": "微信",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.tencent.mm",
+        "appName": "微信",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,
@@ -36,14 +33,12 @@
           { "type": "elementVisible", "target": { "type": "text", "text": "微信" } }
         ]
       },
-      "actions": [
-        {
-          "type": "notify",
-          "message": "微信已打开，首页已出现",
-          "speakVoice": true,
-          "delayMs": 0
-        }
-      ],
+      "action": {
+        "type": "notify",
+        "message": "微信已打开，首页已出现",
+        "speakVoice": true,
+        "delayMs": 0
+      },
       "constraints": {
         "maxExecutions": 1,
         "cooldownMs": 0,

@@ -2,22 +2,19 @@
   "id": "reactive_test_toutiao_paste",
   "name": "今日头条粘贴测试",
   "description": "打开头条首页，进入搜索框后执行剪贴板粘贴模式输入。",
-  "agentId": "agent_life",
   "goals": [
     {
       "id": "launch_toutiao",
       "name": "启动头条",
       "priority": 10,
       "trigger": { "type": "immediate" },
-      "actions": [
-        {
-          "type": "launchApp",
-          "packageName": "com.ss.android.article.news",
-          "appName": "今日头条",
-          "delayMs": 500,
-          "timeoutMs": 8000
-        }
-      ],
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.ss.android.article.news",
+        "appName": "今日头条",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -28,23 +25,34 @@
         "type": "afterGoal",
         "goalId": "launch_toutiao"
       },
-      "actions": [
-        {
-          "type": "conditionBranch",
-          "condition": {
-            "type": "elementVisible",
-            "target": { "type": "desc", "desc": "听一听开关" }
+      "action": {
+        "type": "conditionBranch",
+        "condition": {
+          "type": "elementVisible",
+          "target": {
+            "type": "desc",
+            "desc": "听一听开关"
+          }
+        },
+        "onTrue": [
+          {
+            "type": "delay",
+            "durationMs": 400
+          }
+        ],
+        "onFalse": [
+          {
+            "type": "systemAction",
+            "systemType": "BACK",
+            "delayMs": 300
           },
-          "onTrue": [
-            { "type": "delay", "durationMs": 400 }
-          ],
-          "onFalse": [
-            { "type": "systemAction", "systemType": "BACK", "delayMs": 300 },
-            { "type": "delay", "durationMs": 1200 }
-          ],
-          "timeoutMs": 1200
-        }
-      ],
+          {
+            "type": "delay",
+            "durationMs": 1200
+          }
+        ],
+        "timeoutMs": 1200
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -58,13 +66,14 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" } }
         ]
       },
-      "actions": [
-        {
-          "type": "tap",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/ki9" },
-          "delayMs": 300
-        }
-      ],
+      "action": {
+        "type": "tap",
+        "target": {
+          "type": "id",
+          "viewId": "com.ss.android.article.news:id/ki9"
+        },
+        "delayMs": 300
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     },
     {
@@ -78,23 +87,31 @@
           { "type": "elementVisible", "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" } }
         ]
       },
-      "actions": [
-        {
-          "type": "typeText",
-          "text": "头条粘贴测试",
-          "target": { "type": "id", "viewId": "com.ss.android.article.news:id/cx" },
-          "clearFirst": true,
-          "mode": "PASTE",
-          "delayMs": 300,
-          "timeoutMs": 2500
-        },
-        {
-          "type": "notify",
-          "message": "已执行粘贴输入动作",
-          "showText": true,
-          "speakVoice": false
-        }
-      ],
+      "action": {
+        "type": "loop",
+        "actions": [
+          {
+            "type": "typeText",
+            "text": "头条粘贴测试",
+            "target": {
+              "type": "id",
+              "viewId": "com.ss.android.article.news:id/cx"
+            },
+            "clearFirst": true,
+            "mode": "PASTE",
+            "delayMs": 300,
+            "timeoutMs": 2500
+          },
+          {
+            "type": "notify",
+            "message": "已执行粘贴输入动作",
+            "showText": true,
+            "speakVoice": false
+          }
+        ],
+        "iterations": 1,
+        "intervalMs": 0
+      },
       "constraints": { "maxExecutions": 1, "cooldownMs": 0, "continueOnFailure": false, "enabled": true }
     }
   ],

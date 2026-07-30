@@ -1,27 +1,19 @@
-// Validates every skills/*.json and examples/*.json against:
-// 1) ReactiveSkillSchema (Zod) + skill-lint forbidden aliases / refs
-// 2) Handwritten root schema.json (JSON Schema via Ajv)
-// Also verifies the generated index contract.
+// Performs offline JSON and business-lint checks for repository examples.
+// Client contract validation happens through GET /api/mcp/schema at runtime.
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
-import { execFileSync } from "child_process";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
+const { createSkillIndex } = require("./build-skill-index.js");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const skillsDir = join(repoRoot, "skills");
 const examplesDir = join(repoRoot, "examples");
 
-const schemaModulePath = join(
-  repoRoot,
-  "autoace-cli",
-  "build",
-  "reactive-skill-schema.mjs"
-);
 const lintModulePath = join(repoRoot, "autoace-cli", "build", "skill-lint.mjs");
-if (!existsSync(schemaModulePath) || !existsSync(lintModulePath)) {
+if (!existsSync(lintModulePath)) {
   console.error(
     "Missing autoace-cli build output. Run `npm ci && npm run build` " +
       "inside autoace-cli/ before validating skills."
@@ -29,24 +21,6 @@ if (!existsSync(schemaModulePath) || !existsSync(lintModulePath)) {
   process.exit(1);
 }
 const { validateSkillPayload } = await import(pathToFileURL(lintModulePath).href);
-
-let Ajv;
-try {
-  ({ default: Ajv } = await import("ajv"));
-} catch {
-  // Prefer mcp-server's ajv if installed there
-  try {
-    Ajv = require(join(repoRoot, "autoace-cli/node_modules/ajv"));
-  } catch {
-    console.error("Ajv is required. Install with: npm install ajv --prefix autoace-cli");
-    process.exit(1);
-  }
-}
-
-const draftSchema = JSON.parse(readFileSync(join(repoRoot, "schema.json"), "utf8"));
-// Ajv draft-07: strip $schema if draft-2020 to avoid hard failure; handwritten uses draft-07.
-const ajv = new Ajv({ allErrors: true, strict: false });
-const validateJsonSchema = ajv.compile(draftSchema);
 
 const BANNED = ["readText", "setClipboard", "askAgent"];
 
@@ -81,20 +55,11 @@ for (const filePath of [...collectJsonFiles(skillsDir), ...collectJsonFiles(exam
 
   const lint = validateSkillPayload(data);
   if (!lint.ok) {
-    console.error(`✗ ${rel} (Zod/lint):\n  ${lint.errors.join("\n  ")}`);
+    console.error(`✗ ${rel} (business lint):\n  ${lint.errors.join("\n  ")}`);
     failed = true;
   }
 
-  const jsOk = validateJsonSchema(data);
-  if (!jsOk) {
-    const errs = (validateJsonSchema.errors || [])
-      .map((e) => `${e.instancePath || "/"} ${e.message}`)
-      .join("\n  ");
-    console.error(`✗ ${rel} (JSON Schema):\n  ${errs}`);
-    failed = true;
-  }
-
-  if (lint.ok && jsOk) {
+  if (lint.ok) {
     if (filePath.startsWith(skillsDir)) {
       if (ids.has(data.id)) {
         console.error(`✗ ${rel}: duplicate id "${data.id}"`);
@@ -107,9 +72,9 @@ for (const filePath of [...collectJsonFiles(skillsDir), ...collectJsonFiles(exam
   }
 }
 
-// Verify the index contract for skills only
-execFileSync("node", [join(repoRoot, "scripts/build-skill-index.js")], { stdio: "inherit" });
-const index = JSON.parse(readFileSync(join(skillsDir, "index.json"), "utf8"));
+// Verify the generated index contract in memory. Validation must remain read-only;
+// the website workflow invokes build-skill-index.js explicitly when it needs a file.
+const index = createSkillIndex(skillsDir);
 if (!Array.isArray(index.skills)) {
   console.error("✗ index.json: expected { skills: [...] } shape");
   failed = true;

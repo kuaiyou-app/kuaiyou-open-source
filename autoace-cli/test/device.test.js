@@ -1,6 +1,12 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { withDeviceLock, TimeoutError } = require("../build/device.js");
+const {
+  ResponseTooLargeError,
+  httpGetBuffer,
+  httpGetText,
+  resolveDeviceBaseUrl,
+  withDeviceLock,
+} = require("../build/device.js");
 
 test("withDeviceLock serializes overlapping operations", async () => {
   const events = [];
@@ -46,4 +52,35 @@ test("HttpStatusError carries the status code", () => {
   assert.equal(err.name, "HttpStatusError");
   assert.match(err.message, /HTTP 404 Not Found/);
   assert.ok(err instanceof Error);
+});
+
+test("resolveDeviceBaseUrl prefers an explicit URL and preserves IP compatibility", () => {
+  assert.equal(
+    resolveDeviceBaseUrl({
+      KUAIYOU_DEVICE_URL: "https://device.local:8443/",
+      KUAIYOU_DEVICE_IP: "192.0.2.1:8080",
+    }),
+    "https://device.local:8443"
+  );
+  assert.equal(resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "192.0.2.1" }), "http://192.0.2.1:8080");
+  assert.equal(resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "192.0.2.1:9000" }), "http://192.0.2.1:9000");
+  assert.equal(resolveDeviceBaseUrl({}), undefined);
+});
+
+test("resolveDeviceBaseUrl rejects unsafe or ambiguous addresses", () => {
+  assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "file:///tmp/device" }), /http/);
+  assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "http://user:pass@device" }), /credentials/);
+  assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "http://device" }), /host/);
+  assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "2001:db8::1" }), /bracket/);
+});
+
+test("HTTP helpers reject response bodies above their configured limit", async () => {
+  await assert.rejects(
+    httpGetText("data:text/plain,abcdef", 1000, 3),
+    (error) => error instanceof ResponseTooLargeError && error.limitBytes === 3
+  );
+  await assert.rejects(
+    httpGetBuffer("data:application/octet-stream;base64,AQIDBAUG", 1000, 4),
+    (error) => error instanceof ResponseTooLargeError && error.limitBytes === 4
+  );
 });
