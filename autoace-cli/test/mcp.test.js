@@ -31,6 +31,11 @@ function validSkillJson(id = "test-123") {
 
 before(async () => {
   schemaServer = http.createServer((req, res) => {
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true, pairedAt: Date.now() }));
+      return;
+    }
     if (req.url === "/api/mcp/schema") {
       res.writeHead(200, { "Content-Type": "application/schema+json" });
       res.end(JSON.stringify(schemaForAction("notify")));
@@ -339,7 +344,13 @@ test("mutating device tools are serialized through the real MCP handler", async 
     assert.notEqual(run.isError, true);
     assert.notEqual(remove.isError, true);
     assert.equal(maxActive, 1);
-    assert.deepEqual(paths.sort(), ["/api/mcp/run", "/api/mcp/skills/delete"].sort());
+    assert.ok(paths.includes("/api/mcp/pair"));
+    assert.ok(paths.includes("/api/mcp/run"));
+    assert.ok(paths.includes("/api/mcp/skills/delete"));
+    assert.deepEqual(
+      paths.filter((p) => p !== "/api/mcp/pair").sort(),
+      ["/api/mcp/run", "/api/mcp/skills/delete"].sort()
+    );
   } finally {
     await probe.close();
     await new Promise((resolve) => server.close(resolve));

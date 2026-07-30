@@ -5,6 +5,7 @@ const {
   clearDeviceSchemaCache,
   fetchDeviceContractValidator,
 } = require("../build/device-schema.js");
+const { clearDevicePairingSession } = require("../build/device.js");
 
 function schemaRequiring(field) {
   return JSON.stringify({
@@ -17,10 +18,18 @@ function schemaRequiring(field) {
 
 test("fetches the App schema every time and reuses compilation only for identical content", async () => {
   clearDeviceSchemaCache();
+  clearDevicePairingSession();
   let body = schemaRequiring("id");
-  let requests = 0;
+  let schemaRequests = 0;
+  let pairRequests = 0;
   const server = http.createServer((req, res) => {
-    requests += 1;
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      pairRequests += 1;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true, pairedAt: Date.now() }));
+      return;
+    }
+    schemaRequests += 1;
     assert.equal(req.url, "/api/mcp/schema");
     res.writeHead(200, { "Content-Type": "application/schema+json" });
     res.end(body);
@@ -32,13 +41,14 @@ test("fetches the App schema every time and reuses compilation only for identica
   try {
     const first = await fetchDeviceContractValidator(baseUrl);
     const second = await fetchDeviceContractValidator(baseUrl);
-    assert.equal(requests, 2);
+    assert.equal(pairRequests, 1);
+    assert.equal(schemaRequests, 2);
     assert.equal(first, second);
     assert.equal(first({ id: "x" }).ok, true);
 
     body = schemaRequiring("name");
     const third = await fetchDeviceContractValidator(baseUrl);
-    assert.equal(requests, 3);
+    assert.equal(schemaRequests, 3);
     assert.notEqual(third, second);
     assert.equal(third({ id: "x" }).ok, false);
     assert.equal(third({ name: "x" }).ok, true);
@@ -49,7 +59,13 @@ test("fetches the App schema every time and reuses compilation only for identica
 
 test("rejects invalid JSON returned by the schema endpoint", async () => {
   clearDeviceSchemaCache();
-  const server = http.createServer((_req, res) => {
+  clearDevicePairingSession();
+  const server = http.createServer((req, res) => {
+    if (req.url === "/api/mcp/pair") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end("not-json");
   });
