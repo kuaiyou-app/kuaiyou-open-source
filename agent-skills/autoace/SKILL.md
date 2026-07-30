@@ -1,11 +1,11 @@
 ---
 name: autoace
-description: Build and sync Kuaiyou Master Android automation skills with autoace-cli (MCP). Use when the user wants to inspect the phone screen, write/validate a skill JSON, or push a skill to the device.
+description: Build and sync Kuaiyou Master Android automation skills and domain-coach learning plans with autoace-cli (MCP). Use when the user wants to inspect the phone screen, write/validate a skill or LearningPlan JSON, or push to the device.
 ---
 
 # autoace
 
-Help the user create **skills** (Android automation JSON) for the Kuaiyou Master app, using **autoace-cli** over MCP when available.
+Help the user create **skills** (Android automation JSON) and **领域教练学习计划** (`LearningPlan` JSON) for the Kuaiyou Master app, using **autoace-cli** over MCP when available.
 
 ## Names (do not confuse)
 
@@ -14,8 +14,9 @@ Help the user create **skills** (Android automation JSON) for the Kuaiyou Master
 | **autoace-cli** | npm / MCP CLI on the computer |
 | **autoace** | This Agent Skill (workflow instructions for Claude Code / Codex / Cursor) |
 | **技能 (skill)** | JSON executed on the phone inside Kuaiyou Master — not this file |
+| **学习计划 (plan)** | Domain-coach `LearningPlan` JSON; appears in 领域教练 after phone confirm |
 
-Prefer saying **技能** / **skill** to the user. Do not invent product names like ReactiveSkill for end users.
+Prefer saying **技能** / **skill** or **计划** / **plan** to the user. Do not invent product names like ReactiveSkill for end users.
 
 ## Prerequisites
 
@@ -29,7 +30,7 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
    `KUAIYOU_DEVICE_IP` must include the port and both values need re-entering after a restart.
    Repeated wrong pairing codes make the device back off with `429` + `Retry-After`.
 
-## Preferred flow (MCP)
+## Preferred flow — skills (MCP)
 
 1. `capture_screenshot` and/or `get_ui_tree` to understand the current screen.
 2. Call `get_kuaiyou_schema` to read the authoritative contract from the running client's `GET /api/mcp/schema`, then draft a matching skill JSON. Do not rely on a repository-local schema copy.
@@ -38,6 +39,16 @@ Prefer saying **技能** / **skill** to the user. Do not invent product names li
 5. Iterate with natural language if the tap misses.
 
 Do **not** use removed fields/actions: `agentId`, `readText`, `setClipboard`, `askAgent`.
+
+## Preferred flow — domain-coach plans (MCP)
+
+Requires an App build that exposes the plan routes (parallel to App `feat/mcp-plan-import`). If tools return “not available yet on this App build”, wait for that build.
+
+1. `plans_schema` → `GET /api/mcp/plans/schema` (authoritative; **never** mirror `learning-plan.schema.json` into a repo).
+2. Draft a `LearningPlan` JSON matching that schema.
+3. `plans_validate` — schema + on-device validate; fix until valid.
+4. `plans_deploy` — success means `pendingConfirm=true`; user must confirm on the phone. Same id overwrites outline **and** progress; new id may HTTP 409 if quota is full.
+5. Optional: `plans_list` / `plans_get` / `plans_delete`.
 
 ## Fallback sync (no MCP push)
 
@@ -60,6 +71,18 @@ curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/import" \
 
 A successful response looks like `{"status":"ok","skillId":"…","pendingConfirm":true}`;
 the phone then shows an import confirmation dialog.
+
+Plan curl (when the App route exists):
+
+```bash
+curl "http://<DEVICE_IP>:<PORT>/api/mcp/plans/schema" \
+  -H "Authorization: Bearer <PAIRING_CODE>"
+
+curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/plans" \
+  -H "Authorization: Bearer <PAIRING_CODE>" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/learning_plan.json
+```
 
 ## How users invoke this Agent Skill
 
