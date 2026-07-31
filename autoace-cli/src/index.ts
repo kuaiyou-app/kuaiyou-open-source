@@ -48,10 +48,12 @@ type ToolErrorResponse = {
   isError: true;
 };
 
+const PACKAGE_JSON = require("../package.json") as { name: string; version: string };
+
 const server = new Server(
   {
-    name: "autoace-cli",
-    version: "1.0.8",
+    name: PACKAGE_JSON.name,
+    version: PACKAGE_JSON.version,
   },
   {
     capabilities: {
