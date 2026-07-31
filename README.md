@@ -51,7 +51,7 @@
 | **[docs](./docs/)** | 编写与联调手册；完整接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md)。 |
 | **[examples](./examples/)** | 技能示例 JSON。 |
 | **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。 |
-| **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（Claude Code `/autoace`、Codex `$autoace`）。 |
+| **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（`SKILL.md` + `reference.md` + `craft.md`；Claude `/autoace`、Codex `$autoace`）。 |
 | **[开源官网 (Website)](https://kuaiyou-app.github.io/)** | 独立开源官网（源码位于 [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。 |
 
 ---
