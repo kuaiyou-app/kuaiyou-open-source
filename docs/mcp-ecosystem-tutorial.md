@@ -82,33 +82,45 @@
 
 ## 安装 Agent Skill：`autoace`（推荐）
 
-源文件：[`agent-skills/autoace/SKILL.md`](../agent-skills/autoace/SKILL.md)
+权威目录：[`agent-skills/autoace/`](../agent-skills/autoace/)（`SKILL.md` + `reference.md` + `craft.md`）。请整目录安装，不要只拉单个 `SKILL.md`。
 
 ### Claude Code
 
 ```bash
 mkdir -p ~/.claude/skills/autoace
-curl -fsSL \
-  https://raw.githubusercontent.com/kuaiyou-app/kuaiyou-open-source/main/agent-skills/autoace/SKILL.md \
-  -o ~/.claude/skills/autoace/SKILL.md
+for f in SKILL.md reference.md craft.md; do
+  curl -fsSL \
+    "https://raw.githubusercontent.com/kuaiyou-app/kuaiyou-open-source/main/agent-skills/autoace/$f" \
+    -o "$HOME/.claude/skills/autoace/$f"
+done
 ```
 
-项目内共享可放到 `.claude/skills/autoace/SKILL.md`。调用：`/autoace`。
+项目内共享可放到 `.claude/skills/autoace/`。调用：`/autoace`。
 
 ### Codex
 
 ```bash
 mkdir -p ~/.codex/skills/autoace
-curl -fsSL \
-  https://raw.githubusercontent.com/kuaiyou-app/kuaiyou-open-source/main/agent-skills/autoace/SKILL.md \
-  -o ~/.codex/skills/autoace/SKILL.md
+for f in SKILL.md reference.md craft.md; do
+  curl -fsSL \
+    "https://raw.githubusercontent.com/kuaiyou-app/kuaiyou-open-source/main/agent-skills/autoace/$f" \
+    -o "$HOME/.codex/skills/autoace/$f"
+done
 ```
 
-或项目内：`.agents/skills/autoace/SKILL.md`。调用：`$autoace` 或 `/skills`。若技能未启用，在 `~/.codex/config.toml` 打开 skills 相关开关后重启。
+或项目内：从仓库根执行 `node scripts/sync-autoace-skill.mjs`（同步到 `.agents/skills/autoace/`）。调用：`$autoace` 或 `/skills`。若技能未启用，在 `~/.codex/config.toml` 打开 skills 相关开关后重启。
 
 ### Cursor
 
-将 `agent-skills/autoace` 复制到项目的 Agent Skills 目录（或个人 skills 目录），保存后新开 Agent 会话即可。
+```bash
+# 项目内（Codex/兼容目录）
+node scripts/sync-autoace-skill.mjs
+
+# 个人 Cursor skills
+node scripts/sync-autoace-skill.mjs --cursor-user
+```
+
+或手动将整个 `agent-skills/autoace` 复制到项目 / 个人 skills 目录，保存后新开 Agent 会话。
 
 ### 一键（若已装 skills CLI）
 
@@ -116,24 +128,28 @@ curl -fsSL \
 npx skills add kuaiyou-app/kuaiyou-open-source --skill autoace
 ```
 
+MCP 建议钉版本以免 npx 缓存过旧：`args: ["-y", "autoace-cli@1.0.8"]`（或当前最新）。
+
 ---
 
 ## 让 AI 写第一个技能
 
 常用 MCP 工具：
 
+- `pair_device`：会话开场配对并展示设备上下文（传入 App 复制全文）
 - `get_kuaiyou_schema`：读取当前 App 的权威技能契约
 - `get_ui_tree` / `capture_screenshot`
 - `validate_kuaiyou_skill`：重新获取客户端契约并校验
-- `push_reactive_skill`：再次获取客户端契约，校验通过后推送
-- （可选）`list_skills` / `run_skill` / `stop_skill` …
+- `push_reactive_skill`：校验通过后推送（对用户说「推送技能」）
+- 调试：`list_skills` / `run_skill` / `get_skill_status` / `get_execution_log` / `stop_skill` / `delete_skill`
+- 领域教练（需 App 支持）：`plans_schema` → `plans_validate` → `plans_deploy`
 
-推荐顺序：读取实时契约 → 看屏 → 生成技能 → 校验 → 推送。仓库中的示例不是契约定义；如果 App 未开启 MCP 服务或 `/api/mcp/schema` 不可用，CLI 不会使用本地文件兜底。
+推荐顺序：配对开场 → 读取实时契约 → 看屏 → 按稳定选择器生成技能 → 校验 → 推送 → 不准则看 log/UI 再改。仓库中的示例不是契约定义；如果 App 未开启 MCP 服务或 `/api/mcp/schema` 不可用，CLI 不会使用本地文件兜底。
 
 示例提示词：
 
-> 请用 autoace MCP：先读取当前客户端技能契约，再截屏并获取 UI 树，写一个自动点击「每日签到」的技能，校验通过后推送到手机。
+> 请用 autoace MCP：先 pair_device（我粘贴了连接信息），读取当前客户端技能契约，再截屏并获取 UI 树，写一个自动点击「每日签到」的技能，校验通过后推送到手机。
 
-手机弹出确认后本地执行；不准就继续用自然语言改再推。
+手机弹出确认后本地执行；不准就根据执行日志和 UI 树改选择器再推。
 
 仓库 `examples/`、`skills/` 是参考 JSON，**不是**装进 Claude Code 的 Agent Skill。

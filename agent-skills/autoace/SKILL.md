@@ -1,103 +1,73 @@
 ---
 name: autoace
-description: Build and sync Kuaiyou Master Android automation skills and domain-coach learning plans with autoace-cli (MCP). Use when the user wants to inspect the phone screen, write/validate a skill or LearningPlan JSON, or push to the device.
+description: >-
+  用 autoace-cli（MCP）连接快游大师：截屏/UI 树、编写校验推送 Android 自动化技能 JSON、
+  以及领域教练 LearningPlan。在用户提到快游、MCP 配对、技能推送、领域教练/学习计划，
+  或要操作手机屏幕时使用。
 ---
 
 # autoace
 
-Help the user create **skills** (Android automation JSON) and **领域教练学习计划** (`LearningPlan` JSON) for the Kuaiyou Master app, using **autoace-cli** over MCP when available.
+用 **autoace-cli**（MCP）为快游大师编写并推送**技能**（手机端自动化 JSON）与**领域教练学习计划**（`LearningPlan`）。
+
+详细工具表、错误码、curl 兜底见 [reference.md](reference.md)；选择器与编写质量见 [craft.md](craft.md)。
 
 ## Names (do not confuse)
 
 | Name | What it is |
 | --- | --- |
-| **autoace-cli** | npm / MCP CLI on the computer |
-| **autoace** | This Agent Skill (workflow instructions for Claude Code / Codex / Cursor) |
-| **技能 (skill)** | JSON executed on the phone inside Kuaiyou Master — not this file |
-| **学习计划 (plan)** | Domain-coach `LearningPlan` JSON; appears in 领域教练 after phone confirm |
+| **autoace-cli** | 电脑端 npm / MCP CLI |
+| **autoace** | 本 Agent Skill（给 Agent 的流程说明） |
+| **技能 (skill)** | 手机内执行的自动化 JSON — 不是本文件 |
+| **学习计划 (plan)** | 领域教练 `LearningPlan` JSON；手机确认后出现在领域教练 |
 
-Prefer saying **技能** / **skill** or **计划** / **plan** to the user. Do not invent product names like ReactiveSkill for end users.
+对用户只说**技能** / **计划**。不要发明 ReactiveSkill 等产品名。工具名 `push_reactive_skill` 仅内部使用，对用户说「推送技能」。
 
-## Prerequisites
+## Prerequisites (human setup)
 
-1. Phone: Kuaiyou Master → Settings → Advanced → **MCP 服务** on. The pairing code is masked by default; click the service row to copy the complete stdio configuration.
-2. Computer: Node.js ≥ 20 and npm ≥ 10; register an MCP server named `autoace` with `command=npx`, `args=["-y","autoace-cli"]`, and the copied:
-   - `KUAIYOU_DEVICE_IP`
-   - `KUAIYOU_MCP_PAIRING_CODE`
-   Prefer user/local MCP configuration. Never write the pairing code into the repository, logs, docs, or Git commits.
-3. Phone and computer must be on the same network — the LAN HTTP channel is the only transport.
-4. The port and pairing code are regenerated every time the MCP service is switched on, so
-   `KUAIYOU_DEVICE_IP` must include the port and both values need re-entering after a restart.
-   Repeated wrong pairing codes make the device back off with `429` + `Retry-After`.
+手机：设置 → 高级 → **MCP 服务** 开启；点服务行复制完整 stdio 配置。电脑：Node ≥ 20、npm ≥ 10；MCP 名 `autoace`，`npx -y autoace-cli`（建议钉版本，如 `autoace-cli@1.0.8`），填入 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`。同网；配对码/端口每次开启会变；错码会 `429`。配对码永不写入仓库/日志/提交。
 
-## Session start (required)
+## MCP capability gate (required)
 
-Before writing or deploying any skill/plan:
+动手前先确认当前 MCP `tools/list`（或客户端工具目录）实际暴露的工具：
 
-1. Collect the user’s **pairing materials** (App「复制给 Agent」全文最理想，至少要有地址/配对码；文中通常含 `设备：品牌 · Android … · 宽x高 · App …`）。
-2. Call **`pair_device`**，并把上述原文传入 `connectionInfo`（不要自己编造设备字段，也不要假设 pair HTTP 体会返回 device JSON）。
-3. Tool 会综合：**配对成功** + **用户粘贴里的设备画像/地址** + **CLI 能力摘要**。
-4. **面向用户展示**该综合上下文，然后**等待用户指示**再写技能或计划。
-5. 若用户材料里没有「设备：」行，如实说明并请用户补粘贴 App 复制文案。
+1. **缺 `pair_device` / `plans_*`**：提示用户升级/重装 `autoace-cli`（清 npx 缓存或钉最新版）并重载 MCP；在修复前用已有工具降级（见下）。
+2. **有 `pair_device`**：走 Session start。
+3. **无 `pair_device`**：用 `get_kuaiyou_schema` 等触发静默配对；向用户说明设备画像可能不全，请补贴 App「复制给 Agent」全文。
+4. **无 `plans_*`**：不要编造计划 schema；仅做技能流程，或等 CLI/App 升级。
 
-Other tools also auto-pair on first use, but that path is silent — always use `pair_device` (+ `connectionInfo`) at session start so the human sees context and capabilities.
+## Session start
 
-## Preferred flow — skills (MCP)
+写/部署任何技能或计划前：
 
-1. After the session-start display above, use `capture_screenshot` and/or `get_ui_tree` when you need the current screen.
-2. Call `get_kuaiyou_schema` to read the authoritative contract from `GET /api/mcp/schema`, then draft a matching skill JSON. Do not rely on a repository-local schema copy.
-3. `validate_kuaiyou_skill` — the CLI fetches the same client contract again; fix until valid.
-4. `push_reactive_skill` — wait for the user to confirm import/run on the phone.
-5. Iterate with natural language if the tap misses.
+1. 收集用户配对材料（App「复制给 Agent」全文最佳；至少地址/配对码；通常含 `设备：品牌 · Android … · 宽x高 · App …`）。
+2. 若有 `pair_device`：把原文传入 `connectionInfo`（不臆造设备字段；不假设 pair HTTP 体含 device JSON）。
+3. 向用户展示：配对结果 + 设备画像/地址 + CLI 能力摘要。
+4. **若同条消息已有编写任务 → 展示后立即执行；否则等待指示。**
+5. 材料无「设备：」行时如实说明并请补贴。
 
-Do **not** use removed fields/actions: `agentId`, `readText`, `setClipboard`, `askAgent`.
+## Skills flow
 
-## Preferred flow — domain-coach plans (MCP)
+1. 需要看屏时：`capture_screenshot` 和/或 `get_ui_tree`。
+2. `get_kuaiyou_schema` — 唯一权威契约（`GET /api/mcp/schema`）。禁止用仓库本地 schema 副本。
+3. 按契约 + [craft.md](craft.md) 起草技能 JSON。
+4. `validate_kuaiyou_skill` → 修到通过。
+5. `push_reactive_skill` → 等用户在手机确认导入/运行。
+6. **调试闭环**（点偏或行为不对时强制走）：`list_skills`（可选）→ `run_skill` → `get_skill_status` / `get_execution_log` → 对照 UI 改 JSON → 再 validate → push。可用 `stop_skill` / `delete_skill` 收尾。
 
-Requires an App build that exposes the plan routes. If tools return “not available yet on this App build”, wait for that build.
+禁止字段/动作：`agentId`、`readText`、`setClipboard`、`askAgent`。
 
-1. After session-start display, `plans_schema` → `GET /api/mcp/plans/schema` (authoritative; **never** mirror `learning-plan.schema.json` into a repo).
-2. Draft a `LearningPlan` JSON matching that schema.
-3. `plans_validate` — schema + on-device validate; fix until valid.
-4. `plans_deploy` — success means `pendingConfirm=true`; user must confirm on the phone. Same id overwrites outline **and** progress; new id may HTTP 409 if quota is full.
-5. Optional: `plans_list` / `plans_get` / `plans_delete`.
+## Plans flow（领域教练）
 
-## Fallback sync (no MCP push)
+需 App 暴露 `/api/mcp/plans*`。工具返回「not available」或 `404` → 停，说明当前 App 未支持，**不要**镜像 `learning-plan.schema.json`。
 
-If MCP push is unavailable, save the skill JSON and post it over the LAN yourself.
-Fetch the current contract first; never infer it from repository examples. The pairing code is required — without the `Authorization` header the device answers `401`.
+1. `plans_schema` → 按返回契约起草 `LearningPlan`。
+2. `plans_validate` → 修到通过。
+3. `plans_deploy` → `pendingConfirm=true`，须手机确认。同 id 覆盖大纲与进度；新 id 可能 `409`（配额满）。
+4. 可选：`plans_list` / `plans_get` / `plans_delete`。
 
-```bash
-curl "http://<DEVICE_IP>:<PORT>/api/mcp/schema" \
-  -H "Authorization: Bearer <PAIRING_CODE>"
-```
+## Hard rules
 
-Validate the generated JSON against that response before importing it.
-
-```bash
-curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/import" \
-  -H "Authorization: Bearer <PAIRING_CODE>" \
-  -H "Content-Type: application/json" \
-  --data-binary @/tmp/generated_skill.json
-```
-
-A successful response looks like `{"status":"ok","skillId":"…","pendingConfirm":true}`;
-the phone then shows an import confirmation dialog.
-
-Plan curl (when the App route exists):
-
-```bash
-curl "http://<DEVICE_IP>:<PORT>/api/mcp/plans/schema" \
-  -H "Authorization: Bearer <PAIRING_CODE>"
-
-curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/plans" \
-  -H "Authorization: Bearer <PAIRING_CODE>" \
-  -H "Content-Type: application/json" \
-  --data-binary @/tmp/learning_plan.json
-```
-
-## How users invoke this Agent Skill
-
-- **Claude Code**: `/autoace` or rely on description match
-- **Codex**: `$autoace` or `/skills`
-- **Cursor**: skill auto-loads when relevant if installed under project/user skills
+- 契约只认设备运行时 schema；仓库 `examples/`、`skills/` 仅思路参考。
+- 配对码、截图、UI 文本敏感信息：不提交仓库、不写入可分享日志。
+- MCP 不可用时的 curl 兜底见 [reference.md](reference.md)。

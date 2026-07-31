@@ -81,3 +81,6 @@ jobs:
 
       - name: Run offline skill lint and verify index contract
         run: node scripts/validate-skills.mjs
+
+      - name: Verify Agent Skill tools match autoace-cli
+        run: node scripts/validate-agent-skill.mjs

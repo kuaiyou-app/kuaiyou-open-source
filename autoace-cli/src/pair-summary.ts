@@ -171,7 +171,7 @@ export function formatPairSuccessMessage(opts: {
   parts.push(formatCliCapabilities());
   parts.push("");
   parts.push(
-    "请把以上「已连接设备上下文」与「可用能力」展示给用户，再等待用户下达编写技能或计划的具体指示。"
+    "请把以上「已连接设备上下文」与「可用能力」展示给用户。若用户同条消息已给出编写任务则立即继续；否则等待具体指示。"
   );
   parts.push("");
   parts.push(`Logs:\n${opts.logs}`);
