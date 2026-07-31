@@ -12,6 +12,7 @@ import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
 import { formatPlanLintResult, validatePlanPayload } from "./plan-lint.js";
 import {
   formatPairSuccessMessage,
+  mergeConnectionInfo,
   parseConnectionInfo,
   parsePairAck,
 } from "./pair-summary.js";
@@ -23,6 +24,7 @@ import {
 } from "./device-schema.js";
 import {
   HttpStatusError,
+  addressToBaseUrl,
   clearDevicePairingSession,
   ensureDevicePaired,
   httpGetText,
@@ -30,6 +32,7 @@ import {
   httpPostJson,
   httpPostForm,
   resolveDeviceBaseUrl,
+  setSessionDeviceOverride,
   sniffImageMime,
   withDeviceLock,
 } from "./device.js";
@@ -222,14 +225,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "pair_device",
         description:
-          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing from the user's connection paste (地址/配对码/设备画像) plus pair success and a CLI capability list. Pass connectionInfo whenever the user pasted App copy text. Present the briefing to the user before taking skill/plan instructions.",
+          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing from the user's connection paste (地址/配对码/设备画像) plus pair success and a CLI capability list. Pass connectionInfo whenever the user pasted App copy text. When connectionInfo (or structured host/port/code) is present, those values override process env for this MCP session — no restart required. Present the briefing to the user before taking skill/plan instructions.",
         inputSchema: {
           type: "object",
           properties: {
             connectionInfo: {
               type: "string",
               description:
-                "Optional. The full App「复制给 Agent」paste (or at least the 设备： line). Device brand/Android/resolution/App version are taken from this text — not invented from the pair HTTP body.",
+                "Optional. The full App「复制给 Agent」paste (or at least the 设备： line). Device brand/Android/resolution/App version are taken from this text — not invented from the pair HTTP body. Address and pairing code here override KUAIYOU_DEVICE_IP / KUAIYOU_MCP_PAIRING_CODE for subsequent tools in this process.",
+            },
+            host: {
+              type: "string",
+              description:
+                "Optional structured host (or host:port). Wins over address parsed from connectionInfo when set.",
+            },
+            port: {
+              type: "string",
+              description: "Optional structured port. Combined with host when host has no port.",
+            },
+            code: {
+              type: "string",
+              description:
+                "Optional structured pairing code. Wins over code parsed from connectionInfo when set. Never echo in user summaries.",
+            },
+            deviceLabel: {
+              type: "string",
+              description:
+                "Optional structured device line (e.g. Xiaomi · Android 14 · 1080x2400 · App 2.9.0). Wins over 设备： from connectionInfo when set.",
             },
           },
         },
@@ -576,10 +598,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "pair_device": {
+      const args =
+        (request.params.arguments as {
+          connectionInfo?: string;
+          host?: string;
+          port?: string | number;
+          code?: string;
+          deviceLabel?: string;
+        }) || {};
+      const connection = mergeConnectionInfo(parseConnectionInfo(args.connectionInfo), {
+        host: args.host,
+        port: args.port,
+        code: args.code,
+        deviceLabel: args.deviceLabel,
+      });
+
+      let sessionOverrideApplied = false;
+      try {
+        if (connection.address) {
+          setSessionDeviceOverride({ baseUrl: addressToBaseUrl(connection.address) });
+          sessionOverrideApplied = true;
+        }
+        if (connection.pairingCode) {
+          setSessionDeviceOverride({ pairingCode: connection.pairingCode });
+          sessionOverrideApplied = true;
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Invalid address in connectionInfo/host: ${detail}`
+        );
+      }
+
       const baseUrl = getDeviceBaseUrl();
-      if (!baseUrl) return missingDeviceIp("pair_device");
-      const { connectionInfo } = (request.params.arguments as { connectionInfo?: string }) || {};
-      const connection = parseConnectionInfo(connectionInfo);
+      if (!baseUrl) {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `pair_device needs a device address.\n` +
+                `Pass connectionInfo (App「复制给 Agent」全文) or structured host/port, ` +
+                `or set KUAIYOU_DEVICE_IP / KUAIYOU_DEVICE_URL in mcp.json and reload MCP.`,
+            },
+          ],
+          isError: true,
+        };
+      }
       let logs = `POST ${baseUrl}/api/mcp/pair\n`;
       try {
         clearDevicePairingSession();
@@ -598,6 +664,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 configuredEndpoint: baseUrl.replace(/^https?:\/\//, ""),
                 logs,
                 legacyNoPairRoute: paired.legacyNoPairRoute,
+                sessionOverrideApplied,
               }),
             },
           ],

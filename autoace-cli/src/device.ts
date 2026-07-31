@@ -31,13 +31,73 @@ export class ResponseTooLargeError extends Error {
 }
 
 /**
+ * In-process session overrides from pair_device.connectionInfo (or structured
+ * host/port/code). Takes precedence over mcp.json env for this MCP process so
+ * Agents can retarget without waiting for a Cursor MCP reload.
+ */
+export type SessionDeviceOverride = {
+  baseUrl?: string;
+  pairingCode?: string;
+};
+
+let sessionOverride: SessionDeviceOverride = {};
+
+export function getSessionDeviceOverride(): SessionDeviceOverride {
+  return { ...sessionOverride };
+}
+
+export function setSessionDeviceOverride(partial: SessionDeviceOverride): void {
+  const next: SessionDeviceOverride = { ...sessionOverride };
+  if (partial.baseUrl !== undefined) {
+    const trimmed = partial.baseUrl.trim().replace(/\/+$/, "");
+    next.baseUrl = trimmed || undefined;
+  }
+  if (partial.pairingCode !== undefined) {
+    const code = partial.pairingCode.trim();
+    next.pairingCode = code || undefined;
+  }
+  sessionOverride = next;
+  // Endpoint or code change invalidates the cached pair handshake.
+  clearDevicePairingSession();
+}
+
+export function clearSessionDeviceOverride(): void {
+  sessionOverride = {};
+  clearDevicePairingSession();
+}
+
+/**
+ * Turn App paste `host:port` (or a full http(s) URL) into a base URL for fetch.
+ */
+export function addressToBaseUrl(address: string): string {
+  const trimmed = address.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    throw new Error("device address must not be empty");
+  }
+  if (trimmed.includes("://")) {
+    return resolveDeviceBaseUrlFromEnv({ KUAIYOU_DEVICE_URL: trimmed })!;
+  }
+  return resolveDeviceBaseUrlFromEnv({ KUAIYOU_DEVICE_IP: trimmed })!;
+}
+
+/**
  * Resolve the device endpoint once, with an explicit URL taking precedence.
  * KUAIYOU_DEVICE_IP remains an HTTP compatibility path for current App builds;
  * KUAIYOU_DEVICE_URL lets a future TLS-capable App provide an https:// endpoint.
+ *
+ * When a session override baseUrl is set (from connectionInfo), it wins over env
+ * so retargeting does not require restarting the MCP process.
  */
 export function resolveDeviceBaseUrl(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
+  if (sessionOverride.baseUrl) {
+    return sessionOverride.baseUrl;
+  }
+  return resolveDeviceBaseUrlFromEnv(env);
+}
+
+function resolveDeviceBaseUrlFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   const explicitUrl = env.KUAIYOU_DEVICE_URL?.trim();
   if (explicitUrl) {
     let parsed: URL;
@@ -67,9 +127,14 @@ export function resolveDeviceBaseUrl(
   return `http://${deviceIp}${hasPort ? "" : ":8080"}`;
 }
 
-function authHeaders(): Record<string, string> {
+function resolvePairingCode(env: NodeJS.ProcessEnv = process.env): string {
+  if (sessionOverride.pairingCode) return sessionOverride.pairingCode;
   // Prefer short pairing code; keep KUAIYOU_MCP_TOKEN as a compatibility alias.
-  const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN;
+  return env.KUAIYOU_MCP_PAIRING_CODE || env.KUAIYOU_MCP_TOKEN || "";
+}
+
+function authHeaders(): Record<string, string> {
+  const code = resolvePairingCode();
   return code ? { Authorization: `Bearer ${code}` } : {};
 }
 
@@ -104,7 +169,7 @@ export async function ensureDevicePaired(
   baseUrl: string,
   timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
 ): Promise<EnsurePairedResult> {
-  const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN || "";
+  const code = resolvePairingCode();
   const key = `${baseUrl.replace(/\/+$/, "")}|${code}`;
   if (pairedSessionKey === key) {
     return {

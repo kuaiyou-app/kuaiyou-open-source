@@ -11,12 +11,25 @@ export type ParsedConnectionInfo = {
   address?: string;
   /** Never log or echo the full code in summaries; only note whether one was present. */
   hasPairingCode: boolean;
+  /**
+   * Pairing code extracted for session override / HTTP auth.
+   * Do not print this in user-facing summaries.
+   */
+  pairingCode?: string;
   /** Raw「设备：…」line when present. */
   deviceLine?: string;
   brand?: string;
   androidVersion?: string;
   resolution?: string;
   appVersion?: string;
+};
+
+/** Optional structured fields for pair_device (preferred over regex when present). */
+export type StructuredConnectionFields = {
+  host?: string;
+  port?: string | number;
+  code?: string;
+  deviceLabel?: string;
 };
 
 export type PairAck = {
@@ -66,39 +79,84 @@ export function parseConnectionInfo(text: string | undefined | null): ParsedConn
   const addressMatch = source.match(/(?:地址|Address)\s*[：:]\s*(\S+)/i);
   const codeMatch = source.match(/(?:配对码|Pairing\s*code|KUAIYOU_MCP_PAIRING_CODE)\s*[：:=]\s*(\S+)/i);
   const deviceMatch = source.match(/(?:设备|Device)\s*[：:]\s*(.+)$/im);
+  const pairingCode = codeMatch?.[1]?.replace(/[，,。.\s]+$/, "");
 
   const info: ParsedConnectionInfo = {
     address: addressMatch?.[1]?.replace(/[，,。.\s]+$/, ""),
-    hasPairingCode: Boolean(codeMatch?.[1]),
+    hasPairingCode: Boolean(pairingCode),
+    pairingCode: pairingCode || undefined,
     deviceLine: deviceMatch?.[1]?.trim(),
   };
 
-  if (info.deviceLine) {
-    // Split on middle-dot / bullet separators used by McpConnectionPaste.
-    const parts = info.deviceLine
-      .split(/\s*[·•|]\s*/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    for (const part of parts) {
-      const android = part.match(/^Android\s+(.+)$/i);
-      if (android) {
-        info.androidVersion = android[1].trim();
-        continue;
-      }
-      const app = part.match(/^App\s+(.+)$/i);
-      if (app) {
-        info.appVersion = app[1].trim();
-        continue;
-      }
-      if (/^\d+\s*[x×]\s*\d+$/i.test(part)) {
-        info.resolution = part.replace(/\s*[x×]\s*/i, "x");
-        continue;
-      }
-      if (!info.brand) info.brand = part;
-    }
-  }
+  applyDeviceLinePortrait(info);
 
   return info;
+}
+
+function applyDeviceLinePortrait(info: ParsedConnectionInfo): void {
+  if (!info.deviceLine) return;
+  // Split on middle-dot / bullet separators used by McpConnectionPaste.
+  const parts = info.deviceLine
+    .split(/\s*[·•|]\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    const android = part.match(/^Android\s+(.+)$/i);
+    if (android) {
+      info.androidVersion = android[1].trim();
+      continue;
+    }
+    const app = part.match(/^App\s+(.+)$/i);
+    if (app) {
+      info.appVersion = app[1].trim();
+      continue;
+    }
+    if (/^\d+\s*[x×]\s*\d+$/i.test(part)) {
+      info.resolution = part.replace(/\s*[x×]\s*/i, "x");
+      continue;
+    }
+    if (!info.brand) info.brand = part;
+  }
+}
+
+/**
+ * Merge structured pair_device fields over a paste parse. Structured host/port/code
+ * win when present so Agents can avoid regex mis-parses.
+ */
+export function mergeConnectionInfo(
+  paste: ParsedConnectionInfo,
+  structured?: StructuredConnectionFields | null
+): ParsedConnectionInfo {
+  const merged: ParsedConnectionInfo = { ...paste };
+  if (!structured) return merged;
+
+  const host = typeof structured.host === "string" ? structured.host.trim() : "";
+  const portRaw = structured.port;
+  const port =
+    portRaw === undefined || portRaw === null || portRaw === ""
+      ? ""
+      : String(portRaw).trim();
+  if (host) {
+    merged.address = port ? `${host}:${port}` : host;
+  }
+
+  const code = typeof structured.code === "string" ? structured.code.trim() : "";
+  if (code) {
+    merged.pairingCode = code;
+    merged.hasPairingCode = true;
+  }
+
+  const label = typeof structured.deviceLabel === "string" ? structured.deviceLabel.trim() : "";
+  if (label) {
+    merged.deviceLine = label;
+    merged.brand = undefined;
+    merged.androidVersion = undefined;
+    merged.resolution = undefined;
+    merged.appVersion = undefined;
+    applyDeviceLinePortrait(merged);
+  }
+
+  return merged;
 }
 
 export function formatConnectedDeviceContext(opts: {
@@ -150,6 +208,8 @@ export function formatPairSuccessMessage(opts: {
   configuredEndpoint?: string;
   logs: string;
   legacyNoPairRoute?: boolean;
+  /** True when connectionInfo/structured fields overrode process env for this session. */
+  sessionOverrideApplied?: boolean;
 }): string {
   const parts: string[] = [];
   if (opts.legacyNoPairRoute) {
@@ -159,6 +219,11 @@ export function formatPairSuccessMessage(opts: {
     if (opts.ack.pairedAt !== undefined) {
       parts.push(`pairedAt=${opts.ack.pairedAt}`);
     }
+  }
+  if (opts.sessionOverrideApplied) {
+    parts.push(
+      "本次请求已用配对材料中的地址/配对码临时覆盖 MCP 进程 env（无需先重启 MCP）。请同步更新 mcp.json 中的 KUAIYOU_DEVICE_IP 与 KUAIYOU_MCP_PAIRING_CODE，否则下次冷启动仍会回到旧值。"
+    );
   }
   parts.push("");
   parts.push(

@@ -57,8 +57,10 @@ CLI **不内置**技能或学习计划 Schema。
 `pair_device` 成功后会综合展示：
 
 1. **配对成功**（`POST /api/mcp/pair`）
-2. **用户提供的连接/配对材料**（`connectionInfo`：App 复制文案中的地址与 `设备：品牌 · Android · 分辨率 · App` 等）——设备画像来自用户材料，**不**由 CLI 假定 pair 响应体结构
+2. **用户提供的连接/配对材料**（`connectionInfo`：App 复制文案中的地址与 `设备：品牌 · Android · 分辨率 · App` 等；也可传结构化 `host`/`port`/`code`/`deviceLabel`）——设备画像来自用户材料，**不**由 CLI 假定 pair 响应体结构
 3. **CLI 能力摘要**
+
+传入的地址/配对码会**临时覆盖**本 MCP 进程的 `KUAIYOU_DEVICE_IP` / `KUAIYOU_MCP_PAIRING_CODE`（无需先重启 MCP）；请同步更新 `mcp.json` env，否则下次冷启动仍回旧值。
 
 配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文；若用户同条消息已给出编写任务则立即继续，否则等待指示。
 
