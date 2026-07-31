@@ -1,6 +1,6 @@
 {
   "name": "autoace-cli",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "autoace-cli — MCP CLI for Kuaiyou Master Android automation. Lets Cursor/Claude control the phone, push skills, and deploy domain-coach learning plans.",
   "main": "./build/index.js",
   "bin": {

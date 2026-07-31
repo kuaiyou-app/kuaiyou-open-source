@@ -10,6 +10,11 @@ import * as fs from "fs/promises";
 import * as dotenv from "dotenv";
 import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
 import { formatPlanLintResult, validatePlanPayload } from "./plan-lint.js";
+import {
+  formatPairSuccessMessage,
+  parseConnectionInfo,
+  parsePairAck,
+} from "./pair-summary.js";
 import { type ContractValidator } from "./contract-schema-validator.js";
 import {
   fetchDeviceContractValidator,
@@ -46,7 +51,7 @@ type ToolErrorResponse = {
 const server = new Server(
   {
     name: "autoace-cli",
-    version: "1.0.7",
+    version: "1.0.8",
   },
   {
     capabilities: {
@@ -215,8 +220,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "pair_device",
         description:
-          "Explicitly pair with the App MCP service (POST /api/mcp/pair). Updates the phone settings UI to 已配对. Other tools also auto-pair on first use.",
-        inputSchema: { type: "object", properties: {} },
+          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing from the user's connection paste (地址/配对码/设备画像) plus pair success and a CLI capability list. Pass connectionInfo whenever the user pasted App copy text. Present the briefing to the user before taking skill/plan instructions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            connectionInfo: {
+              type: "string",
+              description:
+                "Optional. The full App「复制给 Agent」paste (or at least the 设备： line). Device brand/Android/resolution/App version are taken from this text — not invented from the pair HTTP body.",
+            },
+          },
+        },
       },
       {
         name: "validate_kuaiyou_skill",
@@ -562,16 +576,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "pair_device": {
       const baseUrl = getDeviceBaseUrl();
       if (!baseUrl) return missingDeviceIp("pair_device");
+      const { connectionInfo } = (request.params.arguments as { connectionInfo?: string }) || {};
+      const connection = parseConnectionInfo(connectionInfo);
       let logs = `POST ${baseUrl}/api/mcp/pair\n`;
       try {
         clearDevicePairingSession();
-        await ensureDevicePaired(baseUrl);
-        logs += "paired=true\n";
+        const paired = await ensureDevicePaired(baseUrl);
+        logs += paired.legacyNoPairRoute
+          ? "paired=compat (HTTP 404 /pair)\n"
+          : `paired=true bodyBytes=${paired.body.length}\n`;
+        const ack = parsePairAck(paired.body);
         return {
           content: [
             {
               type: "text",
-              text: `Device paired. The App settings page should show 已配对.\n\nLogs:\n${logs}`,
+              text: formatPairSuccessMessage({
+                ack,
+                connection,
+                configuredEndpoint: baseUrl.replace(/^https?:\/\//, ""),
+                logs,
+                legacyNoPairRoute: paired.legacyNoPairRoute,
+              }),
             },
           ],
         };
