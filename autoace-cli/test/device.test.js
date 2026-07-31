@@ -2,9 +2,12 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const {
   ResponseTooLargeError,
+  addressToBaseUrl,
+  clearSessionDeviceOverride,
   httpGetBuffer,
   httpGetText,
   resolveDeviceBaseUrl,
+  setSessionDeviceOverride,
   withDeviceLock,
 } = require("../build/device.js");
 
@@ -55,6 +58,7 @@ test("HttpStatusError carries the status code", () => {
 });
 
 test("resolveDeviceBaseUrl prefers an explicit URL and preserves IP compatibility", () => {
+  clearSessionDeviceOverride();
   assert.equal(
     resolveDeviceBaseUrl({
       KUAIYOU_DEVICE_URL: "https://device.local:8443/",
@@ -68,10 +72,25 @@ test("resolveDeviceBaseUrl prefers an explicit URL and preserves IP compatibilit
 });
 
 test("resolveDeviceBaseUrl rejects unsafe or ambiguous addresses", () => {
+  clearSessionDeviceOverride();
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "file:///tmp/device" }), /http/);
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "http://user:pass@device" }), /credentials/);
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "http://device" }), /host/);
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "2001:db8::1" }), /bracket/);
+});
+
+test("session device override wins over env for resolveDeviceBaseUrl", () => {
+  clearSessionDeviceOverride();
+  setSessionDeviceOverride({ baseUrl: "http://127.0.0.1:42091" });
+  try {
+    assert.equal(
+      resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "127.0.0.1:38665" }),
+      "http://127.0.0.1:42091"
+    );
+    assert.equal(addressToBaseUrl("192.168.0.4:9"), "http://192.168.0.4:9");
+  } finally {
+    clearSessionDeviceOverride();
+  }
 });
 
 test("HTTP helpers reject response bodies above their configured limit", async () => {

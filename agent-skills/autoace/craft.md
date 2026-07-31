@@ -46,8 +46,11 @@ capture_screenshot / get_ui_tree
 ## Learning plans
 
 - Schema **只**来自 `plans_schema`；404 则停止。
-- 同 id 部署会覆盖大纲**与**进度——改计划前告知用户。
+- `generatedBy` = 当前对话模型名（如 `Cursor Grok 4.5`），禁止 CLI/MCP/Skill 通道名。
+- 部署前先 `plans_list`：配额满则先问删/覆盖/腾位，避免 validate 通过后撞 409。
+- 同 id 部署会覆盖大纲**与**进度——改计划前必须强提醒并征得用户确认。
 - 删除 `plans_delete` 无手机确认框——执行前向用户确认。
+- 双推技能/计划时手机可能排队确认；无 queue API 前以手机弹窗为准。
 
 ## Related docs in repo
 

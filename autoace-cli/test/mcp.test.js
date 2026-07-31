@@ -11,6 +11,7 @@ const SERVER_ENTRY = path.join(__dirname, "..", "build", "index.js");
 let client;
 let transport;
 let schemaServer;
+let schemaServerPort;
 
 function validSkillJson(id = "test-123") {
   return JSON.stringify({
@@ -45,14 +46,14 @@ before(async () => {
     res.end(JSON.stringify({ error: "not found" }));
   });
   await new Promise((resolve) => schemaServer.listen(0, "127.0.0.1", resolve));
-  const { port } = schemaServer.address();
+  schemaServerPort = schemaServer.address().port;
 
   transport = new StdioClientTransport({
     command: "node",
     args: [SERVER_ENTRY],
     env: {
       ...process.env,
-      KUAIYOU_DEVICE_URL: `http://127.0.0.1:${port}`,
+      KUAIYOU_DEVICE_URL: `http://127.0.0.1:${schemaServerPort}`,
       KUAIYOU_DEVICE_IP: "",
     },
   });
@@ -96,7 +97,7 @@ test("pair_device synthesizes device context from user connectionInfo paste", as
     name: "pair_device",
     arguments: {
       connectionInfo:
-        "地址：127.0.0.1:9\n配对码：000000\n\n设备：TestBrand · Android 14 · 1080x2400 · App 9.9.9\n",
+        `地址：127.0.0.1:${schemaServerPort}\n配对码：000000\n\n设备：TestBrand · Android 14 · 1080x2400 · App 9.9.9\n`,
     },
   });
   assert.notEqual(res.isError, true);
@@ -109,6 +110,125 @@ test("pair_device synthesizes device context from user connectionInfo paste", as
   assert.match(text, /capture_screenshot/);
   assert.match(text, /plans_deploy/);
   assert.match(text, /展示给用户/);
+  assert.match(text, new RegExp(`地址：127\\.0\\.0\\.1:${schemaServerPort}`));
+  assert.match(text, /临时覆盖 MCP 进程 env/);
+});
+
+test("pair_device connectionInfo overrides stale env port for pair and later tools", async () => {
+  const hits = [];
+  const liveServer = http.createServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true, pairedAt: 42 }));
+      return;
+    }
+    if (req.url === "/api/mcp/schema") {
+      res.writeHead(200, { "Content-Type": "application/schema+json" });
+      res.end(JSON.stringify(schemaForAction("notify")));
+      return;
+    }
+    res.writeHead(404).end("{}");
+  });
+  await new Promise((resolve) => liveServer.listen(0, "127.0.0.1", resolve));
+  const livePort = liveServer.address().port;
+
+  // Stale env points at a closed/unused port; connectionInfo must win.
+  const stalePort = livePort === 38665 ? 38666 : 38665;
+  const overrideTransport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: {
+      ...process.env,
+      KUAIYOU_DEVICE_URL: "",
+      KUAIYOU_DEVICE_IP: `127.0.0.1:${stalePort}`,
+      KUAIYOU_MCP_PAIRING_CODE: "111111",
+    },
+  });
+  const overrideClient = new Client(
+    { name: "override-client", version: "1.0.0" },
+    { capabilities: {} }
+  );
+  await overrideClient.connect(overrideTransport);
+  try {
+    const pairRes = await overrideClient.callTool({
+      name: "pair_device",
+      arguments: {
+        connectionInfo: `地址：127.0.0.1:${livePort}\n配对码：999999\n\n设备：OverrideBrand · Android 15 · 720x1600 · App 3.0.0\n`,
+      },
+    });
+    assert.notEqual(pairRes.isError, true, pairRes.content?.[0]?.text);
+    const pairText = pairRes.content[0].text;
+    assert.match(pairText, new RegExp(`POST http://127\\.0\\.0\\.1:${livePort}/api/mcp/pair`));
+    assert.match(pairText, new RegExp(`地址：127\\.0\\.0\\.1:${livePort}`));
+    assert.doesNotMatch(pairText, new RegExp(String(stalePort)));
+    assert.ok(hits.includes("POST /api/mcp/pair"));
+
+    const schemaRes = await overrideClient.callTool({
+      name: "get_kuaiyou_schema",
+      arguments: {},
+    });
+    assert.notEqual(schemaRes.isError, true, schemaRes.content?.[0]?.text);
+    assert.ok(hits.includes("GET /api/mcp/schema"));
+  } finally {
+    await overrideClient.close();
+    await new Promise((resolve) => liveServer.close(resolve));
+  }
+});
+
+test("pair_device structured host/port/code override paste and env", async () => {
+  const hits = [];
+  const liveServer = http.createServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    const auth = req.headers.authorization || "";
+    hits.push(`auth:${auth}`);
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
+    res.writeHead(404).end("{}");
+  });
+  await new Promise((resolve) => liveServer.listen(0, "127.0.0.1", resolve));
+  const livePort = liveServer.address().port;
+
+  const structuredTransport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: {
+      ...process.env,
+      KUAIYOU_DEVICE_URL: "",
+      KUAIYOU_DEVICE_IP: "127.0.0.1:1",
+      KUAIYOU_MCP_PAIRING_CODE: "000000",
+    },
+  });
+  const structuredClient = new Client(
+    { name: "structured-client", version: "1.0.0" },
+    { capabilities: {} }
+  );
+  await structuredClient.connect(structuredTransport);
+  try {
+    const res = await structuredClient.callTool({
+      name: "pair_device",
+      arguments: {
+        connectionInfo: "地址：127.0.0.1:2\n配对码：111111\n设备：PasteBrand · Android 10 · 1x1 · App 1.0.0\n",
+        host: "127.0.0.1",
+        port: String(livePort),
+        code: "777777",
+        deviceLabel: "StructBrand · Android 16 · 1080x1920 · App 4.0.0",
+      },
+    });
+    assert.notEqual(res.isError, true, res.content?.[0]?.text);
+    const text = res.content[0].text;
+    assert.match(text, /StructBrand/);
+    assert.doesNotMatch(text, /PasteBrand/);
+    assert.match(text, new RegExp(`POST http://127\\.0\\.0\\.1:${livePort}/api/mcp/pair`));
+    assert.ok(hits.includes("POST /api/mcp/pair"));
+    assert.ok(hits.includes("auth:Bearer 777777"));
+  } finally {
+    await structuredClient.close();
+    await new Promise((resolve) => liveServer.close(resolve));
+  }
 });
 
 test("validate_kuaiyou_skill accepts a valid skill", async () => {
