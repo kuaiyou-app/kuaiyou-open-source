@@ -30,10 +30,22 @@ Prefer saying **技能** / **skill** or **计划** / **plan** to the user. Do no
    `KUAIYOU_DEVICE_IP` must include the port and both values need re-entering after a restart.
    Repeated wrong pairing codes make the device back off with `429` + `Retry-After`.
 
+## Session start (required)
+
+Before writing or deploying any skill/plan:
+
+1. Collect the user’s **pairing materials** (App「复制给 Agent」全文最理想，至少要有地址/配对码；文中通常含 `设备：品牌 · Android … · 宽x高 · App …`）。
+2. Call **`pair_device`**，并把上述原文传入 `connectionInfo`（不要自己编造设备字段，也不要假设 pair HTTP 体会返回 device JSON）。
+3. Tool 会综合：**配对成功** + **用户粘贴里的设备画像/地址** + **CLI 能力摘要**。
+4. **面向用户展示**该综合上下文，然后**等待用户指示**再写技能或计划。
+5. 若用户材料里没有「设备：」行，如实说明并请用户补粘贴 App 复制文案。
+
+Other tools also auto-pair on first use, but that path is silent — always use `pair_device` (+ `connectionInfo`) at session start so the human sees context and capabilities.
+
 ## Preferred flow — skills (MCP)
 
-1. `capture_screenshot` and/or `get_ui_tree` to understand the current screen.
-2. Call `get_kuaiyou_schema` to read the authoritative contract from the running client's `GET /api/mcp/schema`, then draft a matching skill JSON. Do not rely on a repository-local schema copy.
+1. After the session-start display above, use `capture_screenshot` and/or `get_ui_tree` when you need the current screen.
+2. Call `get_kuaiyou_schema` to read the authoritative contract from `GET /api/mcp/schema`, then draft a matching skill JSON. Do not rely on a repository-local schema copy.
 3. `validate_kuaiyou_skill` — the CLI fetches the same client contract again; fix until valid.
 4. `push_reactive_skill` — wait for the user to confirm import/run on the phone.
 5. Iterate with natural language if the tap misses.
@@ -42,9 +54,9 @@ Do **not** use removed fields/actions: `agentId`, `readText`, `setClipboard`, `a
 
 ## Preferred flow — domain-coach plans (MCP)
 
-Requires an App build that exposes the plan routes (parallel to App `feat/mcp-plan-import`). If tools return “not available yet on this App build”, wait for that build.
+Requires an App build that exposes the plan routes. If tools return “not available yet on this App build”, wait for that build.
 
-1. `plans_schema` → `GET /api/mcp/plans/schema` (authoritative; **never** mirror `learning-plan.schema.json` into a repo).
+1. After session-start display, `plans_schema` → `GET /api/mcp/plans/schema` (authoritative; **never** mirror `learning-plan.schema.json` into a repo).
 2. Draft a `LearningPlan` JSON matching that schema.
 3. `plans_validate` — schema + on-device validate; fix until valid.
 4. `plans_deploy` — success means `pendingConfirm=true`; user must confirm on the phone. Same id overwrites outline **and** progress; new id may HTTP 409 if quota is full.

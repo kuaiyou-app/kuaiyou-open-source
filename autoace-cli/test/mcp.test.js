@@ -91,6 +91,26 @@ test("get_kuaiyou_schema returns the current App contract", async () => {
   assert.deepEqual(JSON.parse(res.content[0].text), schemaForAction("notify"));
 });
 
+test("pair_device synthesizes device context from user connectionInfo paste", async () => {
+  const res = await client.callTool({
+    name: "pair_device",
+    arguments: {
+      connectionInfo:
+        "地址：127.0.0.1:9\n配对码：000000\n\n设备：TestBrand · Android 14 · 1080x2400 · App 9.9.9\n",
+    },
+  });
+  assert.notEqual(res.isError, true);
+  const text = res.content[0].text;
+  assert.match(text, /配对成功/);
+  assert.match(text, /TestBrand/);
+  assert.match(text, /Android 14/);
+  assert.match(text, /1080x2400/);
+  assert.match(text, /App：9\.9\.9/);
+  assert.match(text, /capture_screenshot/);
+  assert.match(text, /plans_deploy/);
+  assert.match(text, /展示给用户/);
+});
+
 test("validate_kuaiyou_skill accepts a valid skill", async () => {
   const skillJson = validSkillJson();
   const res = await client.callTool({

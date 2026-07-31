@@ -75,29 +75,56 @@ function authHeaders(): Record<string, string> {
 
 /** Once per process+endpoint+code; drives App settings「已配对」via POST /api/mcp/pair. */
 let pairedSessionKey: string | undefined;
+/** Last successful pair body for the current session (device context). */
+let lastPairBody: string | undefined;
 
 export function clearDevicePairingSession(): void {
   pairedSessionKey = undefined;
+  lastPairBody = undefined;
 }
+
+export type EnsurePairedResult = {
+  /** True when this call skipped HTTP because the session was already paired. */
+  reusedSession: boolean;
+  /** True when the App answered 404 for /pair (legacy builds). */
+  legacyNoPairRoute: boolean;
+  /** Raw JSON body from POST /api/mcp/pair when a request was made. */
+  body: string;
+};
 
 /**
  * Explicit device handshake. Safe to call repeatedly; no-ops after success for the
  * same baseUrl+pairing code. Older Apps without /pair (HTTP 404) are treated as
  * already paired so tooling keeps working.
+ *
+ * Returns the pair response body (including device profile when the App provides it)
+ * so callers like pair_device can show context to the user.
  */
 export async function ensureDevicePaired(
   baseUrl: string,
   timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
-): Promise<void> {
+): Promise<EnsurePairedResult> {
   const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN || "";
   const key = `${baseUrl.replace(/\/+$/, "")}|${code}`;
-  if (pairedSessionKey === key) return;
+  if (pairedSessionKey === key) {
+    return {
+      reusedSession: true,
+      legacyNoPairRoute: false,
+      body: lastPairBody ?? "",
+    };
+  }
 
   const url = `${baseUrl.replace(/\/+$/, "")}/api/mcp/pair`;
   const res = await httpPostJson(url, "{}", timeoutMs);
-  if (res.ok || res.status === 404) {
+  if (res.ok) {
     pairedSessionKey = key;
-    return;
+    lastPairBody = res.body ?? "";
+    return { reusedSession: false, legacyNoPairRoute: false, body: lastPairBody };
+  }
+  if (res.status === 404) {
+    pairedSessionKey = key;
+    lastPairBody = "";
+    return { reusedSession: false, legacyNoPairRoute: true, body: "" };
   }
   throw new HttpStatusError(res.status, res.statusText || res.body.slice(0, 200));
 }
