@@ -97,19 +97,10 @@ curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/plans" \
 
 ## Sync this Skill
 
-权威目录：仓库 `agent-skills/autoace/`（含 `SKILL.md`、`reference.md`、`craft.md`）。默认分支为 `develop`。
-
-推荐（与飞书同款，装整包到各 Agent）：
+权威目录：`agent-skills/autoace/`（默认分支 `develop`）。
 
 ```bash
 npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
 ```
 
-本仓库内同步到本地消费目录：
-
-```bash
-node scripts/sync-autoace-skill.mjs          # → .agents/skills/autoace
-node scripts/sync-autoace-skill.mjs --cursor-user
-```
-
-若手动 curl：必须同时取得 `SKILL.md`、`reference.md`、`craft.md`（勿只拉单个文件）。Pages 镜像：`https://kuaiyou-app.github.io/agent-skills/autoace/`。
+仓库内：`node scripts/sync-autoace-skill.mjs`（可选 `--cursor-user`）。Pages：`https://kuaiyou-app.github.io/agent-skills/autoace/`（须整包，勿只拉单个文件）。

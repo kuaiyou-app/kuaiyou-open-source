@@ -2,11 +2,7 @@
 
 **The Agentic Skills** - 快游大师电脑端 MCP CLI（npm 包名：`autoace-cli`）。让 Claude Code / Codex / Cursor 等连接 Android 上的「快游大师」App，编写并推送**智能体技能**与**领域教练学习计划**。
 
-配套 Agent Skill 名称：**`autoace`**（仓库路径 `agent-skills/autoace/`）。
-
-```bash
-npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
-```
+配套 Agent Skill：`npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y`。CLI：`npm install -g autoace-cli@latest`。
 
 - **npm**：https://www.npmjs.com/package/autoace-cli
 - **源码**：https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/autoace-cli
@@ -25,17 +21,23 @@ npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
 
 ## 安装 / 配置
 
-`autoace-cli` 是 stdio MCP server。请在 Cursor / Claude / Codex 等客户端中注册，而不是只在普通终端前台运行：
+```bash
+npm install -g autoace-cli@latest
+```
+
+`autoace-cli` 是 stdio MCP server。请在 AI 客户端中注册，而不是只在普通终端前台运行：
 
 ```text
 serverName: autoace
 transport: stdio
-command: npx
-args: ["-y", "autoace-cli"]
+command: autoace-cli
+args: []
 env:
   KUAIYOU_DEVICE_IP: "192.168.1.100:41899"
   KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
+
+也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。按客户端配置格式改写即可。
 
 如果客户端提供 TLS 地址，可改用优先级更高的 `KUAIYOU_DEVICE_URL=https://host:port`。当前仅提供 IP 的客户端仍通过兼容的局域网 HTTP 通道连接；此时应使用可信、隔离的网络，因为配对码和屏幕数据不会获得传输层加密保护。
 
