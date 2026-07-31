@@ -4,6 +4,10 @@
 
 配套 Agent Skill 名称：**`autoace`**（仓库路径 `agent-skills/autoace/`）。
 
+```bash
+npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
+```
+
 - **npm**：https://www.npmjs.com/package/autoace-cli
 - **源码**：https://github.com/kuaiyou-app/kuaiyou-open-source/tree/main/autoace-cli
 - **官网文档**：https://kuaiyou-app.github.io/docs/

@@ -10,7 +10,7 @@ description: >-
 
 用 **autoace-cli**（MCP）为快游大师编写并推送**技能**（手机端自动化 JSON）与**领域教练学习计划**（`LearningPlan`）。
 
-详细工具表、错误码、curl 兜底见 [reference.md](reference.md)；选择器与编写质量见 [craft.md](craft.md)。
+本 Skill **不是安装器**。首次安装 CLI / MCP / 本 Skill 请让用户按网站指南或执行 `npx skills add`（见下）。详细工具表与错误码见 [reference.md](reference.md)；编写质量见 [craft.md](craft.md)。
 
 ## Names (do not confuse)
 
@@ -25,16 +25,28 @@ description: >-
 
 ## Prerequisites (human setup)
 
-手机：设置 → 高级 → **MCP 服务** 开启；点服务行复制完整 stdio 配置。电脑：Node ≥ 20、npm ≥ 10；MCP 名 `autoace`，`npx -y autoace-cli`（建议钉版本，如 `autoace-cli@1.0.8`），填入 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`。同网；配对码/端口每次开启会变；错码会 `429`。配对码永不写入仓库/日志/提交。
+- 手机：设置 → 高级 → **MCP 服务** 开启；点服务行复制完整连接信息。
+- 电脑：Node.js ≥ 20、npm ≥ 10。
+- MCP 名建议 `autoace`；command 用 `npx`，args 建议钉版本，如 `["-y","autoace-cli@1.0.8"]`。
+- 必填 env：`KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`。同网局域网 HTTP；**不要假设 USB 可免 env / 自动发现**。
+- 配对码/端口每次开启 MCP 会变；错码会 `429`。配对码永不写入仓库/日志/提交。
+- 推荐安装本 Skill 整包（含 `reference.md` / `craft.md`）：
+
+```bash
+npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
+```
+
+若用户刚按安装指南装完：展示 MCP 可用后直接走 **Session start**，不要再重复讲一遍 npm。
 
 ## MCP capability gate (required)
 
-动手前先确认当前 MCP `tools/list`（或客户端工具目录）实际暴露的工具：
+动手前确认当前会话的 MCP 工具目录 / `tools/list`：
 
-1. **缺 `pair_device` / `plans_*`**：提示用户升级/重装 `autoace-cli`（清 npx 缓存或钉最新版）并重载 MCP；在修复前用已有工具降级（见下）。
-2. **有 `pair_device`**：走 Session start。
-3. **无 `pair_device`**：用 `get_kuaiyou_schema` 等触发静默配对；向用户说明设备画像可能不全，请补贴 App「复制给 Agent」全文。
-4. **无 `plans_*`**：不要编造计划 schema；仅做技能流程，或等 CLI/App 升级。
+1. **客户端目录缺工具，但 CLI 直连 `tools/list` 已有**：多为会话缓存 → **新开 Agent 对话**（必要时重启 MCP），勿在旧长会话里空转。
+2. **缺 `pair_device` / `plans_*`**：提示升级/重装 `autoace-cli`（清 npx 缓存或钉最新版）并重载 MCP；修复前用已有工具降级。
+3. **有 `pair_device`**：走 Session start。
+4. **无 `pair_device`**：用 `get_kuaiyou_schema` 等触发静默配对；说明设备画像可能不全，请补贴 App「复制给 Agent」全文。
+5. **无 `plans_*`**：不要编造计划 schema；仅做技能流程，或等 CLI/App 升级。
 
 ## Session start
 
