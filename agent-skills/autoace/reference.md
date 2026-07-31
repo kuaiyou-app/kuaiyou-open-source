@@ -97,14 +97,19 @@ curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/plans" \
 
 ## Sync this Skill
 
-权威目录：仓库 `agent-skills/autoace/`（含 `SKILL.md`、`reference.md`、`craft.md`）。
+权威目录：仓库 `agent-skills/autoace/`（含 `SKILL.md`、`reference.md`、`craft.md`）。默认分支为 `develop`。
+
+推荐（与飞书同款，装整包到各 Agent）：
 
 ```bash
-# 从仓库根目录同步到 Codex 项目技能目录
-node scripts/sync-autoace-skill.mjs
+npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
+```
 
-# 同步到个人 Cursor skills（可选）
+本仓库内同步到本地消费目录：
+
+```bash
+node scripts/sync-autoace-skill.mjs          # → .agents/skills/autoace
 node scripts/sync-autoace-skill.mjs --cursor-user
 ```
 
-教程安装若只用 curl 拉 `SKILL.md`，请同时复制同目录下的 `reference.md` 与 `craft.md`。
+若手动 curl：必须同时取得 `SKILL.md`、`reference.md`、`craft.md`（勿只拉单个文件）。Pages 镜像：`https://kuaiyou-app.github.io/agent-skills/autoace/`。
