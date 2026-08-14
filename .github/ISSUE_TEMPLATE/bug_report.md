@@ -24,10 +24,11 @@ If applicable, add screenshots or video to help explain your problem. (如果可
 
 **Environment (运行环境):**
  - OS (操作系统): [e.g. macOS 14, Windows 11]
- - Node.js Version (Node.js版本): [e.g. 18.17.0]
- - Kuaiyou Master App Version (快游大师App版本): [e.g. 1.2.0]
+ - Node.js Version (Node.js版本): [e.g. 20.19.0]
+ - autoace-cli Version (CLI版本): [e.g. 1.0.10]
+ - Kuaiyou Master App Version (快游大师App版本): [e.g. 2.9.0]
  - Device Model (手机型号): [e.g. Xiaomi 14 Pro, Huawei Mate 60]
- - Connection Mode (连接模式): [LAN or ADB]
+ - Connection Mode (连接模式): [LAN HTTP / HTTPS via KUAIYOU_DEVICE_URL]
 
 **Additional context (补充信息)**
 Add any other context about the problem here. (在此添加关于该问题的任何其他上下文信息，如错误日志。)

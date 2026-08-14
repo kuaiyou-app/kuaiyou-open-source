@@ -185,21 +185,19 @@ export function formatConnectedDeviceContext(opts: {
   return lines.join("\n");
 }
 
-/** Stable capability brief for humans — keep in sync with tools/list. */
+/** Default-path briefing after pair — not a dump of tools/list. */
 export function formatCliCapabilities(): string {
   return [
-    "当前 autoace-cli 可用能力：",
-    "屏幕与调试：",
-    "- capture_screenshot — 截取当前屏幕",
-    "- get_ui_tree — 获取当前 UI 节点树",
-    "技能（自动化 JSON）：",
-    "- get_kuaiyou_schema — 拉取设备权威技能 Schema",
-    "- get_kuaiyou_prompts — 拉取设备权威技能/计划生成规则（勿写入仓库）",
-    "- validate_kuaiyou_skill / push_reactive_skill — 校验并部署（手机确认后生效）",
-    "- list_skills / delete_skill / run_skill / stop_skill / get_skill_status / get_execution_log",
-    "领域教练计划（需 App 暴露 /api/mcp/plans*）：",
-    "- plans_schema / plans_list / plans_get / plans_validate / plans_deploy / plans_delete",
-    "说明：部署技能或计划成功通常只表示 pendingConfirm；须用户在手机上确认。",
+    "默认自动化主路径（按这个走，不要把其它工具当并列主功能）：",
+    "- pair_device — 配对",
+    "- observe_screen — 看屏（写选择器时用这个；不要默认 get_ui_tree / capture_screenshot）",
+    "- get_kuaiyou_prompts + get_kuaiyou_schema — 设备权威生成规则与技能契约",
+    "- validate_kuaiyou_skill → push_reactive_skill — 校验并部署（须手机确认）",
+    "- push 可带 run: true（或随后 run_skill wait: true）— 等到结束/失败，返回 log 摘要；失败带截屏",
+    "",
+    "领域教练：仅当用户明确要求学习计划 / 领域教练时再用 plans_*，见 Agent Skill「Plans flow」。",
+    "按需工具（list_skills / delete_skill / stop_skill / get_ui_tree 等）完整表见 reference.md。",
+    "说明：部署成功通常只表示 pendingConfirm；须用户在手机上确认。CLI 不能跳过该确认框。",
   ].join("\n");
 }
 
@@ -211,6 +209,7 @@ export function formatPairSuccessMessage(opts: {
   legacyNoPairRoute?: boolean;
   /** True when connectionInfo/structured fields overrode process env for this session. */
   sessionOverrideApplied?: boolean;
+  persistResult?: { ok: true; path: string } | { ok: false; error: string };
 }): string {
   const parts: string[] = [];
   if (opts.legacyNoPairRoute) {
@@ -221,9 +220,15 @@ export function formatPairSuccessMessage(opts: {
       parts.push(`pairedAt=${opts.ack.pairedAt}`);
     }
   }
-  if (opts.sessionOverrideApplied) {
+  if (opts.persistResult?.ok) {
     parts.push(
-      "本次请求已用配对材料中的地址/配对码临时覆盖 MCP 进程 env（无需先重启 MCP）。请同步更新 mcp.json 中的 KUAIYOU_DEVICE_IP 与 KUAIYOU_MCP_PAIRING_CODE，否则下次冷启动仍会回到旧值。"
+      `已保存到本机 ${opts.persistResult.path}（权限 600，勿提交到 Git）。下次冷启动会自动使用，无需改 mcp.json。换设备或 App 重新开启 MCP 时再 pair_device 即可覆盖。`
+    );
+  } else if (opts.sessionOverrideApplied) {
+    parts.push(
+      opts.persistResult
+        ? `本机保存失败（${opts.persistResult.error}）。本次进程已用配对材料覆盖地址，但冷启动仍可能回到 mcp.json 旧值。`
+        : "本次请求已用配对材料中的地址/配对码覆盖本进程目标（无需先重启 MCP）。"
     );
   }
   parts.push("");

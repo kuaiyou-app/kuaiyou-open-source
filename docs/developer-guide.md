@@ -22,24 +22,23 @@
 - `{"type": "afterGoal", "goalId": "xxx"}`：前一个目标完成后再触发。
 
 ### 2.2 循环控制：`cooldownMs`
-无限循环（如「无限上滑刷视频」）不要用代码循环，用 `Goal` 的执行与冷却：
+需要重复执行时，用 `Goal` 的 `maxExecutions` 与 `cooldownMs`，不要写代码循环。目录技能应给出有限次数；`maxExecutions: 0`（无限）不要作为示范。
 ```json
 {
-  "id": "swipe_up_loop",
-  "name": "无限上滑浏览视频",
-  "trigger": { "type": "immediate" },
+  "id": "tap_checkin",
+  "name": "点击签到",
+  "trigger": {
+    "type": "elementVisible",
+    "target": { "type": "text", "text": "签到" }
+  },
   "action": {
-    "type": "swipe",
-    "startXPct": 0.5,
-    "startYPct": 0.8,
-    "endXPct": 0.5,
-    "endYPct": 0.2,
-    "durationMs": 300
+    "type": "tap",
+    "target": { "type": "text", "text": "签到" },
+    "timeoutMs": 3000
   },
   "constraints": {
-    "maxExecutions": 0,          // 0 表示无限次执行
-    "cooldownMs": 8000,          // 每次执行后冷却 8000 毫秒（即停留 8 秒）
-    "executionMode": "REPEAT"    // 循环模式
+    "maxExecutions": 1,
+    "cooldownMs": 0
   }
 }
 ```

@@ -1,0 +1,58 @@
+{
+  "id": "example_open_app_and_wait",
+  "name": "打开应用并等待首页",
+  "description": "演示 launchApp + elementVisible：启动目标 App，等到首页文案出现后再通知。把 packageName / appName / 文案换成你的应用即可。",
+  "goals": [
+    {
+      "id": "launch_app",
+      "name": "启动应用",
+      "priority": 10,
+      "trigger": { "type": "immediate" },
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.tencent.mm",
+        "appName": "微信",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
+    },
+    {
+      "id": "wait_home",
+      "name": "等待首页出现",
+      "priority": 5,
+      "trigger": {
+        "type": "allOf",
+        "triggers": [
+          { "type": "afterGoal", "goalId": "launch_app" },
+          { "type": "elementVisible", "target": { "type": "text", "text": "微信" } }
+        ]
+      },
+      "action": {
+        "type": "notify",
+        "message": "首页已出现，可以继续写后续 Goal",
+        "speakVoice": false,
+        "delayMs": 0
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": true,
+        "enabled": true
+      }
+    }
+  ],
+  "termination": { "type": "allGoalsDone" },
+  "pacingPreset": "STANDARD",
+  "scanConfig": {
+    "idleIntervalMs": 500,
+    "activeIntervalMs": 200,
+    "fallbackToImageMatch": false
+  },
+  "returnToApp": false
+}

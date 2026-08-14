@@ -22,6 +22,16 @@ import {
   PLAN_SCHEMA_PATH,
   SKILL_SCHEMA_PATH,
 } from "./device-schema.js";
+import { enhanceUiNodes, formatObserveSummary, summarizeScreenTree } from "./observe.js";
+import {
+  PHONE_CONFIRM_NOTICE,
+  asBool,
+  formatDebugLoopText,
+  resolveWaitTimeoutMs,
+  startThenWaitForSkill,
+  type FailureScreenshot,
+  type DebugWaitResult,
+} from "./skill-debug.js";
 import {
   DeviceDisconnectedError,
   HttpStatusError,
@@ -35,6 +45,7 @@ import {
   httpPostForm,
   isDeviceUnreachable,
   markDeviceDisconnected,
+  persistPairedDevice,
   resolveDeviceBaseUrl,
   setSessionDeviceOverride,
   sniffImageMime,
@@ -88,8 +99,8 @@ function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
         type: "text",
         text:
           `${toolName} needs a device address.\n` +
-          `Set KUAIYOU_DEVICE_URL to the full URL, or KUAIYOU_DEVICE_IP to the "ip:port" shown by the App under ` +
-          `设置 → 高级设置 → MCP 服务, and KUAIYOU_MCP_PAIRING_CODE to the pairing code.` +
+          `Call pair_device with the App「复制给 Agent」paste (saved on this machine after success), ` +
+          `or set KUAIYOU_DEVICE_URL / KUAIYOU_DEVICE_IP and KUAIYOU_MCP_PAIRING_CODE.` +
           (logs ? `\n\nLogs:\n${logs}` : ""),
       },
     ],
@@ -99,9 +110,9 @@ function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
 
 const DEVICE_DISCONNECTED_USER_MESSAGE =
   "设备已断开或地址已失效，需要重新配对。请到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 pair_device（connectionInfo 全文）。" +
-  "同步改 mcp.json 的 KUAIYOU_DEVICE_IP（host:port，不要带 http://）和 KUAIYOU_MCP_PAIRING_CODE，然后重载 MCP，否则下次冷启动仍打旧地址。\n" +
-  "The configured device is disconnected or its address is stale. Re-pair: re-copy「复制给 Agent」from the App, call pair_device with the full connectionInfo, " +
-  "update mcp.json KUAIYOU_DEVICE_IP (host:port, no http://) and KUAIYOU_MCP_PAIRING_CODE, then reload MCP.";
+  "成功后会覆盖本机保存的地址与配对码，无需改 mcp.json，也无需仅为换地址而重载 MCP。\n" +
+  "The configured device is disconnected or its address is stale. Re-pair: re-copy「复制给 Agent」from the App and call pair_device with the full connectionInfo. " +
+  "A successful pair overwrites the machine-local saved target; you do not need to edit mcp.json or reload MCP just to change the address.";
 
 function deviceDisconnectedFailure(logs: string): ToolErrorResponse {
   return {
@@ -269,7 +280,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "pair_device",
         description:
-          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing from the user's connection paste (地址/配对码/设备画像) plus pair success and a CLI capability list. Pass connectionInfo whenever the user pasted App copy text. When connectionInfo (or structured host/port/code) is present, those values override process env for this MCP session — no restart required. Present the briefing to the user before taking skill/plan instructions.",
+          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing. Pass connectionInfo whenever the user pasted App copy text. Address/code from this call override env for this process and are saved under the user config dir (default ~/.config/autoace/device.json) so the next cold start does not need mcp.json edits. Present the briefing to the user before taking skill/plan instructions.",
         inputSchema: {
           type: "object",
           properties: {
@@ -309,7 +320,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             skillJson: {
               type: "string",
-              description: "The JSON content or absolute .json file path to validate.",
+              description: "Skill JSON content, or an absolute / relative .json file path.",
             },
           },
           required: ["skillJson"],
@@ -318,7 +329,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel.",
+          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel. skillJson accepts the same JSON string or .json file path as validate_kuaiyou_skill. Optional run=true starts the skill after deploy and waits until it stops or fails, returning a log summary (screenshot on failure). The phone confirmation dialog is still required — this CLI cannot skip it.",
         inputSchema: {
           type: "object",
           properties: {
@@ -328,16 +339,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             skillJson: {
               type: "string",
-              description: "The JSON content to deploy.",
+              description: "Skill JSON content, or an absolute / relative .json file path (same as validate_kuaiyou_skill).",
+            },
+            run: {
+              type: "boolean",
+              description:
+                "If true, start the skill after a successful deploy and wait until it terminates or fails. Default false. Phone confirmation is still required; this CLI does not skip the App dialog.",
+            },
+            timeoutMs: {
+              type: "integer",
+              minimum: 1000,
+              maximum: 180000,
+              description: "Max wait when run=true (default 90000, maximum 180000).",
             },
           },
           required: ["skillId", "skillJson"],
         },
       },
       {
+        name: "observe_screen",
+        description:
+          "Preferred look-at-the-phone tool: screenshot plus a compact list of interactive nodes (text/id/bounds/centerPct) and current package. Use this before writing selectors. Fall back to get_ui_tree only when you need the full dump.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "get_ui_tree",
         description:
-          "Fetch the current UI node tree from the device over the LAN HTTP channel (requires App /api/mcp/ui_tree).",
+          "Full UI node tree from GET /api/mcp/ui_tree. Prefer observe_screen for authoring; this dump is large and may include sensitive on-screen text.",
         inputSchema: {
           type: "object",
           properties: {},
@@ -346,7 +374,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "capture_screenshot",
         description:
-          "Fetch the current screen screenshot from the device over the LAN HTTP channel (requires App /api/mcp/screenshot).",
+          "Fetch the current screen screenshot only. Prefer observe_screen when authoring skills (screenshot + interactive nodes together).",
         inputSchema: {
           type: "object",
           properties: {},
@@ -370,11 +398,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "run_skill",
-        description: "Start executing a skill on the device (requires App /api/mcp/run).",
+        description:
+          "Start executing a skill on the device (POST /api/mcp/run). Optional wait=true polls status until the skill stops or fails, then returns a log summary; failure/timeout attaches a screenshot. Does not skip phone confirmation.",
         inputSchema: {
           type: "object",
           properties: {
             skillId: { type: "string" },
+            wait: {
+              type: "boolean",
+              description:
+                "If true, wait until the skill terminates or fails, then return get_execution_log summary. Default false (fire-and-forget).",
+            },
+            timeoutMs: {
+              type: "integer",
+              minimum: 1000,
+              maximum: 180000,
+              description: "Max wait when wait=true (default 90000, maximum 180000).",
+            },
           },
           required: ["skillId"],
         },
@@ -420,18 +460,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_schema",
         description:
-          "Fetch the authoritative LearningPlan JSON Schema from the App via GET /api/mcp/plans/schema. Schema is never bundled in this CLI — always runtime from the device.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Fetch the authoritative LearningPlan JSON Schema from the App via GET /api/mcp/plans/schema. Schema is never bundled in this CLI — always runtime from the device.",
         inputSchema: { type: "object", properties: {} },
       },
       {
         name: "plans_list",
         description:
-          "List domain-coach learning plans on the device (GET /api/mcp/plans). Summary fields: id, name, goal, phaseCount, nodeCount, updatedAt.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. List domain-coach learning plans on the device (GET /api/mcp/plans). Summary fields: id, name, goal, phaseCount, nodeCount, updatedAt.",
         inputSchema: { type: "object", properties: {} },
       },
       {
         name: "plans_get",
-        description: "Fetch a full LearningPlan JSON by id (GET /api/mcp/plans/{id}).",
+        description:
+          "Only when the user explicitly asks for a 领域教练 learning plan. Fetch a full LearningPlan JSON by id (GET /api/mcp/plans/{id}).",
         inputSchema: {
           type: "object",
           properties: {
@@ -443,7 +484,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_validate",
         description:
-          "Validate a LearningPlan JSON against the device schema (GET /api/mcp/plans/schema), then POST /api/mcp/plans/validate for on-device structural/DAG checks. Does not persist.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Validate a LearningPlan JSON against the device schema (GET /api/mcp/plans/schema), then POST /api/mcp/plans/validate for on-device structural/DAG checks. Does not persist.",
         inputSchema: {
           type: "object",
           properties: {
@@ -458,7 +499,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_deploy",
         description:
-          "Validate then deploy a LearningPlan to the device (POST /api/mcp/plans). Success means pendingConfirm=true — the user must confirm on the phone before it appears in 领域教练. Same id overwrites outline and progress; new id may return HTTP 409 if quota is full.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Validate then deploy a LearningPlan to the device (POST /api/mcp/plans). Success means pendingConfirm=true — the user must confirm on the phone before it appears in 领域教练. Same id overwrites outline and progress; new id may return HTTP 409 if quota is full.",
         inputSchema: {
           type: "object",
           properties: {
@@ -473,7 +514,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_delete",
         description:
-          "Delete a learning plan immediately on the device (POST /api/mcp/plans/delete with { planId }). No confirmation dialog.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Delete a learning plan immediately on the device (POST /api/mcp/plans/delete with { planId }). No confirmation dialog.",
         inputSchema: {
           type: "object",
           properties: {
@@ -485,45 +526,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     ],
   };
 });
-
-function parseBoundsStr(boundsStr: string) {
-  const match = boundsStr.match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
-  if (match) {
-    const left = parseInt(match[1], 10);
-    const top = parseInt(match[2], 10);
-    const right = parseInt(match[3], 10);
-    const bottom = parseInt(match[4], 10);
-    return {
-      left,
-      top,
-      right,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: Math.floor((left + right) / 2),
-      centerY: Math.floor((top + bottom) / 2),
-    };
-  }
-  return boundsStr;
-}
-
-function enhanceUiNodes(data: any): any {
-  if (Array.isArray(data)) {
-    return data.map(enhanceUiNodes);
-  } else if (data !== null && typeof data === "object") {
-    const newData: any = {};
-    for (const key in data) {
-      if (key === "bounds" && typeof data[key] === "string") {
-        newData[key] = parseBoundsStr(data[key]);
-      } else {
-        newData[key] = enhanceUiNodes(data[key]);
-      }
-    }
-    return newData;
-  }
-  return data;
-}
-
 
 async function resolveJsonFileOrContent(input: string, paramName: string): Promise<string> {
   // Only treat as a file path when it looks like one and ends with .json.
@@ -660,6 +662,107 @@ async function deviceApiPost(pathname: string, body: object): Promise<{
   });
 }
 
+async function captureFailureScreenshot(): Promise<FailureScreenshot | undefined> {
+  const baseUrl = getDeviceBaseUrl();
+  if (!baseUrl) return undefined;
+  try {
+    await ensureDeviceReachable(baseUrl);
+    await ensureDevicePaired(baseUrl);
+    const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
+    return { data: buffer.toString("base64"), mimeType: sniffImageMime(buffer) };
+  } catch {
+    return undefined;
+  }
+}
+
+function skillDebugLoop(
+  skillId: string,
+  waited: DebugWaitResult,
+  pendingConfirmWaited: boolean,
+  extraLogs: string
+) {
+  const isError =
+    waited.outcome === "failed" ||
+    waited.outcome === "timeout" ||
+    waited.outcome === "disconnected" ||
+    waited.outcome === "error";
+  const content: Array<
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  > = [];
+  if (waited.screenshot) {
+    content.push({
+      type: "image",
+      data: waited.screenshot.data,
+      mimeType: waited.screenshot.mimeType,
+    });
+  }
+  content.push({
+    type: "text",
+    text: formatDebugLoopText({
+      skillId,
+      outcome: waited.outcome,
+      elapsedMs: waited.elapsedMs,
+      statusText: waited.statusText,
+      logSummary: waited.logSummary,
+      screenshotAttached: Boolean(waited.screenshot),
+      screenshotNote: waited.screenshotNote,
+      pendingConfirmWaited,
+      extraLogs: `${extraLogs}${waited.logs}`,
+    }),
+  });
+  return { content, isError };
+}
+
+async function runSkillDebugLoop(
+  skillId: string,
+  timeoutMs: number,
+  waitForConfirm: boolean,
+  extraLogs = ""
+) {
+  const started = await startThenWaitForSkill({
+    start: () => deviceApiPost("/api/mcp/run", { skillId }),
+    getStatus: () => deviceApiGet(`/api/mcp/status?skillId=${encodeURIComponent(skillId)}`),
+    getLog: (limit) => {
+      const q = new URLSearchParams({ skillId, limit: String(limit) });
+      return deviceApiGet(`/api/mcp/logs?${q.toString()}`);
+    },
+    getScreenshot: captureFailureScreenshot,
+    timeoutMs,
+    waitForConfirm,
+  });
+  if (started.kind === "start-failed") {
+    if (started.start.disconnected) {
+      return deviceDisconnectedFailure(`${extraLogs}${started.start.logs}`);
+    }
+    if (started.pendingConfirmWaited && !started.start.ok && started.start.status === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `Timed out waiting for phone confirmation before starting ${skillId}.\n` +
+              `${PHONE_CONFIRM_NOTICE}\n\nLogs:\n${extraLogs}${started.start.logs}`,
+          },
+        ],
+        isError: true as const,
+      };
+    }
+    return devicePostFailure("run_skill", "start the skill", {
+      ...started.start,
+      logs: `${extraLogs}${started.start.logs}`,
+    });
+  }
+  if (started.waited.outcome === "disconnected") {
+    return deviceDisconnectedFailure(`${extraLogs}${started.waited.logs}`);
+  }
+  return skillDebugLoop(
+    skillId,
+    started.waited,
+    started.pendingConfirmWaited,
+    `${extraLogs}${started.startLogs}`
+  );
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "get_kuaiyou_schema": {
@@ -760,6 +863,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ? "paired=compat (HTTP 404 /pair)\n"
           : `paired=true bodyBytes=${paired.body.length}\n`;
         const ack = parsePairAck(paired.body);
+        const persistResult = persistPairedDevice({
+          baseUrl,
+          pairingCode:
+            connection.pairingCode ||
+            process.env.KUAIYOU_MCP_PAIRING_CODE ||
+            process.env.KUAIYOU_MCP_TOKEN,
+        });
+        if (persistResult.ok) {
+          logs += `persisted=${persistResult.path}\n`;
+        } else {
+          logs += `persistFailed=${persistResult.error}\n`;
+        }
         return {
           content: [
             {
@@ -771,6 +886,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 logs,
                 legacyNoPairRoute: paired.legacyNoPairRoute,
                 sessionOverrideApplied,
+                persistResult,
               }),
             },
           ],
@@ -813,7 +929,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "push_reactive_skill": {
-      const { skillId, skillJson } = request.params.arguments as any;
+      const { skillId, skillJson, run, timeoutMs } = request.params.arguments as any;
       if (!skillId || !skillJson) {
         throw new McpError(ErrorCode.InvalidParams, "skillId and skillJson are required");
       }
@@ -823,8 +939,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "skillId must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ (no path separators or shell metacharacters)"
         );
       }
+      const runAfterPush = asBool(run) === true;
+      let waitTimeoutMs = 90_000;
+      try {
+        waitTimeoutMs = resolveWaitTimeoutMs(timeoutMs);
+      } catch (error) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
 
-      const parsed = validateSkillPayload(skillJson);
+      const content = await resolveSkillJsonInput(skillJson);
+      const parsed = validateSkillPayload(content);
       if (parsed.parsed === null || parsed.errors.length > 0) {
         return {
           content: [{ type: "text", text: `Refusing to deploy — ${formatLintResult(parsed)}` }],
@@ -844,7 +971,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       let processedObj: any =
-        lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(skillJson);
+        lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(content);
       delete processedObj.agentId;
       if (processedObj.id !== skillId) {
         throw new McpError(
@@ -863,7 +990,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!baseUrl) return missingDeviceIp("push_reactive_skill", logs);
 
       logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
-      return withDeviceLock(async () => {
+      const deployed = await withDeviceLock(async () => {
         try {
           await ensureDeviceReachable(baseUrl);
           await ensureDevicePaired(baseUrl);
@@ -879,25 +1006,115 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logs += `HTTP push successful!\n`;
             if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
             return {
-              content: [{ type: "text" as const, text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
+              ok: true as const,
+              body: response.body ?? "",
             };
           }
           logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
           if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-          // The device answered — this is a rejection, not a broken channel.
-          return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
+          return {
+            ok: false as const,
+            response: deviceRejected("deploy the skill", response.status, response.body ?? "", logs),
+          };
         } catch (e: any) {
           logs += `HTTP push failed: ${e.message}\n`;
           if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
-            return noteUnreachableAndFail(e, logs);
+            return { ok: false as const, response: noteUnreachableAndFail(e, logs) };
           }
           if (e instanceof HttpStatusError) {
-            return deviceRejected("deploy the skill", e.status, "", logs);
+            return {
+              ok: false as const,
+              response: deviceRejected("deploy the skill", e.status, "", logs),
+            };
           }
         }
 
-        return deviceHttpFailure("deploy the skill", logs);
+        return { ok: false as const, response: deviceHttpFailure("deploy the skill", logs) };
       });
+
+      if (!deployed.ok) return deployed.response;
+
+      if (!runAfterPush) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}`,
+            },
+          ],
+        };
+      }
+
+      return runSkillDebugLoop(skillId, waitTimeoutMs, true, logs);
+    }
+
+    case "observe_screen": {
+      let logs = "";
+      const baseUrl = getDeviceBaseUrl();
+      if (!baseUrl) return missingDeviceIp("observe_screen", logs);
+
+      logs += `GET ${baseUrl}/api/mcp/ui_tree and /api/mcp/screenshot\n`;
+      try {
+        await ensureDeviceReachable(baseUrl);
+        await ensureDevicePaired(baseUrl);
+        const [treeResult, shotResult] = await Promise.allSettled([
+          httpGetText(`${baseUrl}/api/mcp/ui_tree`),
+          httpGetBuffer(`${baseUrl}/api/mcp/screenshot`),
+        ]);
+
+        if (treeResult.status === "rejected") {
+          const err = treeResult.reason;
+          logs += `ui_tree failed: ${err instanceof Error ? err.message : String(err)}\n`;
+          if (err instanceof DeviceDisconnectedError || isDeviceUnreachable(err)) {
+            return noteUnreachableAndFail(err, logs);
+          }
+          if (err instanceof HttpStatusError) {
+            return deviceRejected("observe the screen", err.status, "", logs);
+          }
+          return deviceHttpFailure("observe the screen", logs);
+        }
+
+        let screenshotNote: string | undefined;
+        if (shotResult.status === "rejected") {
+          const detail =
+            shotResult.reason instanceof Error ? shotResult.reason.message : String(shotResult.reason);
+          logs += `screenshot failed: ${detail}\n`;
+          screenshotNote = `Screenshot unavailable (${detail}). Interactive nodes are still listed below.`;
+        }
+
+        let summaryText: string;
+        try {
+          summaryText = formatObserveSummary(summarizeScreenTree(JSON.parse(treeResult.value)), screenshotNote);
+        } catch {
+          summaryText =
+            (screenshotNote ? `${screenshotNote}\n` : "") +
+            "Screen observation: UI tree was not valid JSON; raw payload follows.\n\n" +
+            treeResult.value.slice(0, 8000);
+        }
+
+        const content: Array<
+          { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+        > = [];
+        if (shotResult.status === "fulfilled") {
+          content.push({
+            type: "image",
+            data: shotResult.value.toString("base64"),
+            mimeType: sniffImageMime(shotResult.value),
+          });
+        }
+        content.push({ type: "text", text: summaryText + `\n\nLogs:\n${logs}` });
+        return { content };
+      } catch (e: any) {
+        logs += `HTTP fetch failed: ${e.message}\n`;
+        if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+          return noteUnreachableAndFail(e, logs);
+        }
+        if (e instanceof HttpStatusError) {
+          return deviceRejected("observe the screen", e.status, "", logs);
+        }
+      }
+
+      return deviceHttpFailure("observe the screen", logs);
     }
 
     case "get_ui_tree": {
@@ -990,15 +1207,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "run_skill": {
-      const { skillId } = request.params.arguments as any;
+      const { skillId, wait, timeoutMs } = request.params.arguments as any;
       if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
         throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
       }
-      const res = await deviceApiPost("/api/mcp/run", { skillId });
-      if (!res.ok) {
-        return devicePostFailure("run_skill", "start the skill", res);
+      const waitEnabled = asBool(wait) === true;
+      let waitTimeoutMs = 90_000;
+      try {
+        waitTimeoutMs = resolveWaitTimeoutMs(timeoutMs);
+      } catch (error) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          error instanceof Error ? error.message : String(error)
+        );
       }
-      return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
+      if (!waitEnabled) {
+        const res = await deviceApiPost("/api/mcp/run", { skillId });
+        if (!res.ok) {
+          return devicePostFailure("run_skill", "start the skill", res);
+        }
+        return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
+      }
+      return runSkillDebugLoop(skillId, waitTimeoutMs, false);
     }
 
     case "stop_skill": {

@@ -4,10 +4,13 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/device.ts',
+    'src/device-config.ts',
     'src/device-schema.ts',
     'src/contract-schema-validator.ts',
     'src/skill-lint.ts',
     'src/plan-lint.ts',
+    'src/observe.ts',
+    'src/skill-debug.ts',
     'src/pair-summary.ts',
   ],
   format: ['cjs', 'esm'],

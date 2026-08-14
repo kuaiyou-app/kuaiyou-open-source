@@ -1,6 +1,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const http = require("node:http");
+
+process.env.KUAIYOU_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "autoace-cfg-"));
 const {
   DeviceDisconnectedError,
   HttpStatusError,
@@ -14,6 +19,10 @@ const {
   httpGetBuffer,
   httpGetText,
   isDeviceUnreachable,
+  persistPairedDevice,
+  readPersistedDevice,
+  clearPersistedDevice,
+  resetDeviceConfigCache,
   resolveDeviceBaseUrl,
   setSessionDeviceOverride,
   withDeviceLock,
@@ -67,6 +76,8 @@ test("HttpStatusError carries the status code", () => {
 
 test("resolveDeviceBaseUrl prefers an explicit URL and preserves IP compatibility", () => {
   clearSessionDeviceOverride();
+  clearPersistedDevice();
+  resetDeviceConfigCache();
   assert.equal(
     resolveDeviceBaseUrl({
       KUAIYOU_DEVICE_URL: "https://device.local:8443/",
@@ -81,6 +92,7 @@ test("resolveDeviceBaseUrl prefers an explicit URL and preserves IP compatibilit
 
 test("resolveDeviceBaseUrl rejects unsafe or ambiguous addresses", () => {
   clearSessionDeviceOverride();
+  clearPersistedDevice();
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "file:///tmp/device" }), /http/);
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_URL: "http://user:pass@device" }), /credentials/);
   assert.throws(() => resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "http://device" }), /host/);
@@ -89,6 +101,7 @@ test("resolveDeviceBaseUrl rejects unsafe or ambiguous addresses", () => {
 
 test("session device override wins over env for resolveDeviceBaseUrl", () => {
   clearSessionDeviceOverride();
+  clearPersistedDevice();
   setSessionDeviceOverride({ baseUrl: "http://127.0.0.1:42091" });
   try {
     assert.equal(
@@ -98,6 +111,27 @@ test("session device override wins over env for resolveDeviceBaseUrl", () => {
     assert.equal(addressToBaseUrl("192.168.0.4:9"), "http://192.168.0.4:9");
   } finally {
     clearSessionDeviceOverride();
+  }
+});
+
+test("persisted pair_device record wins over env and survives a cleared session", () => {
+  clearSessionDeviceOverride();
+  clearPersistedDevice();
+  const saved = persistPairedDevice({
+    baseUrl: "http://192.0.2.8:41899",
+    pairingCode: "654321",
+  });
+  assert.equal(saved.ok, true);
+  try {
+    assert.equal(resolveDeviceBaseUrl({ KUAIYOU_DEVICE_IP: "127.0.0.1:1" }), "http://192.0.2.8:41899");
+    assert.equal(readPersistedDevice().pairingCode, "654321");
+    setSessionDeviceOverride({ baseUrl: "http://127.0.0.1:9" });
+    assert.equal(resolveDeviceBaseUrl({}), "http://127.0.0.1:9");
+    clearSessionDeviceOverride();
+    assert.equal(resolveDeviceBaseUrl({}), "http://192.0.2.8:41899");
+  } finally {
+    clearSessionDeviceOverride();
+    clearPersistedDevice();
   }
 });
 

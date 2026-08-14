@@ -59,20 +59,26 @@ test("formatPairSuccessMessage combines user paste context with pair success and
     connection: parseConnectionInfo(SAMPLE_PASTE),
     configuredEndpoint: "192.168.0.4:42091",
     logs: "ok\n",
-    sessionOverrideApplied: true,
+    persistResult: { ok: true, path: "/tmp/autoace/device.json" },
   });
   assert.match(text, /配对成功/);
-  assert.match(text, /临时覆盖 MCP 进程 env/);
+  assert.match(text, /已保存到本机 \/tmp\/autoace\/device\.json/);
+  assert.doesNotMatch(text, /请同步更新 mcp\.json/);
   assert.match(text, /地址：192\.168\.0\.4:42091/);
   assert.match(text, /Xiaomi/);
   assert.match(text, /Android 14/);
   assert.match(text, /1080x2400/);
   assert.match(text, /App：2\.9\.0/);
-  assert.match(text, /capture_screenshot/);
-  assert.match(text, /plans_deploy/);
+  assert.match(text, /observe_screen/);
+  assert.match(text, /push_reactive_skill/);
+  assert.match(text, /默认自动化主路径/);
+  assert.match(text, /plans_\*/);
+  assert.doesNotMatch(text, /plans_deploy/);
   assert.doesNotMatch(text, /IGNORE/);
   assert.doesNotMatch(text, /541490/);
   assert.match(formatConnectedDeviceContext({ connection: parseConnectionInfo("") }), /未找到/);
   assert.match(formatCliCapabilities(), /get_kuaiyou_schema/);
   assert.match(formatCliCapabilities(), /get_kuaiyou_prompts/);
+  assert.match(formatCliCapabilities(), /仅当用户明确要求/);
+  assert.doesNotMatch(formatCliCapabilities(), /plans_schema \/ plans_list/);
 });

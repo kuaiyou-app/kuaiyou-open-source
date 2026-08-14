@@ -23,6 +23,7 @@ A brief description of the changes. (简要描述所做的更改。)
 - [ ] I did not add or rely on a repository-local Schema copy (未新增或依赖仓库中的 Schema 副本)
 - [ ] I have specified the Kuaiyou App version and target App version used for validation (已注明校验所用快游大师和目标 App 版本)
 - [ ] I have provided a Demo GIF/Video link in the description (已提供演示动图或视频)
+- [ ] This is a reusable catalog skill in `skills/` (not an engine `test_*` fixture)
 
 ## Additional Information (其他信息)
 Any other information, issues, or context related to this PR. (任何相关的补充信息或 Issue 链接。)

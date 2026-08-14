@@ -8,7 +8,7 @@
 我们特别鼓励以下两种形式的贡献：
 
 - **核心工具贡献**：改进 `autoace-cli`（源码目录 `autoace-cli/`）的协议稳定性。
-- **开源技能库贡献**：您使用 AI 或手动编写的自动化 JSON（即「技能」），如果具有较好的普适性（如自动清理缓存、每日自动签到），欢迎提交到我们的官方技能中心，造福更多人！
+- **开源技能库贡献**：您使用 AI 或手动编写的自动化 JSON（即「技能」），如果具有较好的普适性（如自动清理缓存、每日自动签到、关闭更新弹窗），欢迎提交到 `skills/`，造福更多人。引擎回归用例、`test_*` 命名和无限刷视频请放到 `autoace-cli/fixtures/device/`，不要进社区目录。
 
 ---
 
@@ -49,14 +49,14 @@
 - `hotfix/<issue-id>-<short-desc>`：紧急线上修复（从 `main` 检出，合并回 `main` 和 `develop`）。
 - `docs/...` / `chore/...`：文档更新或构建工具链调整等非功能性分支。
 
-如果您想修改项目本身的代码（Android 或 Node.js Server），请遵循以下步骤：
+如果您想修改本仓库的代码（`autoace-cli`、文档或技能 JSON；Android 客户端为闭源），请遵循以下步骤：
 
 1. **先提出 Issue**：任何代码层面的修改，请确保已经有一个相关的 Issue 进行跟踪。
 2. **Fork 本仓库** 到您的个人账号下。
 3. **Clone 到本地并配置 Git**：
    ```bash
-   git clone https://github.com/YOUR-USERNAME/kuaiyou-app.git
-   cd kuaiyou-app
+   git clone https://github.com/YOUR-USERNAME/kuaiyou-open-source.git
+   cd kuaiyou-open-source
    # 强制拉取代码时使用 rebase，避免产生无意义的交叉 merge 节点
    git config pull.rebase true
    git checkout develop
@@ -74,7 +74,7 @@
    npm test
    ```
 6. **提交代码 (Commit)**：
-   我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。请使用规范的提交信息格式（例如 `feat: add new target selector` 或 `fix: mcp server adb fallback`）。
+   我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。请使用规范的提交信息格式（例如 `feat: add new target selector` 或 `fix: mcp pairing timeout message`）。
    **要求：**如果提交解决了 Issue，请在 Commit 描述中附带 `Fixes #123` 或 `Closes #123`。
 7. **推送到远程并提交 PR**：
    ```bash

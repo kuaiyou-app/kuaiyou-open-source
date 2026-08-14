@@ -1,0 +1,58 @@
+{
+  "id": "open_alipay_home",
+  "name": "打开支付宝并等待首页",
+  "description": "启动支付宝，等到屏幕出现「首页」文案后播报完成。不同版本底栏文案可能不同，请用 observe_screen 改选择器。",
+  "goals": [
+    {
+      "id": "launch_alipay",
+      "name": "启动支付宝",
+      "priority": 10,
+      "trigger": { "type": "immediate" },
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.eg.android.AlipayGphone",
+        "appName": "支付宝",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
+    },
+    {
+      "id": "wait_home",
+      "name": "等待支付宝首页",
+      "priority": 5,
+      "trigger": {
+        "type": "allOf",
+        "triggers": [
+          { "type": "afterGoal", "goalId": "launch_alipay" },
+          { "type": "elementVisible", "target": { "type": "text", "text": "首页" } }
+        ]
+      },
+      "action": {
+        "type": "notify",
+        "message": "支付宝已打开，首页已出现",
+        "speakVoice": true,
+        "delayMs": 0
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": true,
+        "enabled": true
+      }
+    }
+  ],
+  "termination": { "type": "allGoalsDone" },
+  "pacingPreset": "STANDARD",
+  "scanConfig": {
+    "idleIntervalMs": 500,
+    "activeIntervalMs": 200,
+    "fallbackToImageMatch": false
+  },
+  "returnToApp": false
+}

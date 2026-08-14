@@ -1,3 +1,13 @@
+import { readPersistedDevice } from "./device-config.js";
+
+export {
+  clearPersistedDevice,
+  getDeviceConfigPath,
+  persistPairedDevice,
+  readPersistedDevice,
+  resetDeviceConfigCache,
+} from "./device-config.js";
+
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
 const DEFAULT_TEXT_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024;
 const DEFAULT_IMAGE_RESPONSE_LIMIT_BYTES = 12 * 1024 * 1024;
@@ -135,14 +145,20 @@ export function addressToBaseUrl(address: string): string {
  * KUAIYOU_DEVICE_IP remains an HTTP compatibility path for current App builds;
  * KUAIYOU_DEVICE_URL lets a future TLS-capable App provide an https:// endpoint.
  *
- * When a session override baseUrl is set (from connectionInfo), it wins over env
- * so retargeting does not require restarting the MCP process.
+ * When a session override baseUrl is set (from connectionInfo), it wins over the
+ * last successful pair_device record and over mcp.json env, so retargeting does
+ * not require restarting the MCP process. Persisted config wins over env so a
+ * later pair survives Cursor cold start without editing mcp.json.
  */
 export function resolveDeviceBaseUrl(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
   if (sessionOverride.baseUrl) {
     return sessionOverride.baseUrl;
+  }
+  const persisted = readPersistedDevice();
+  if (persisted?.baseUrl) {
+    return persisted.baseUrl;
   }
   return resolveDeviceBaseUrlFromEnv(env);
 }
@@ -179,6 +195,8 @@ function resolveDeviceBaseUrlFromEnv(env: NodeJS.ProcessEnv): string | undefined
 
 function resolvePairingCode(env: NodeJS.ProcessEnv = process.env): string {
   if (sessionOverride.pairingCode) return sessionOverride.pairingCode;
+  const persisted = readPersistedDevice();
+  if (persisted?.pairingCode) return persisted.pairingCode;
   // Prefer short pairing code; keep KUAIYOU_MCP_TOKEN as a compatibility alias.
   return env.KUAIYOU_MCP_PAIRING_CODE || env.KUAIYOU_MCP_TOKEN || "";
 }

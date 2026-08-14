@@ -60,6 +60,7 @@ const CORE = [
   "push_reactive_skill",
   "capture_screenshot",
   "get_ui_tree",
+  "observe_screen",
   "list_skills",
   "plans_schema",
 ];

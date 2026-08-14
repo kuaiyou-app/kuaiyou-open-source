@@ -37,11 +37,11 @@ env:
   KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
-也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。按客户端配置格式改写即可。
+也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。env 可省略，首次把 App 复制文案交给 `pair_device` 即可。
 
-如果客户端提供 TLS 地址，可改用优先级更高的 `KUAIYOU_DEVICE_URL=https://host:port`。当前仅提供 IP 的客户端仍通过兼容的局域网 HTTP 通道连接；此时应使用可信、隔离的网络，因为配对码和屏幕数据不会获得传输层加密保护。
+如果客户端提供 TLS 地址，可改用 `KUAIYOU_DEVICE_URL=https://host:port`。当前仅提供 IP 的客户端仍通过兼容的局域网 HTTP 通道连接；此时应使用可信、隔离的网络，因为配对码和屏幕数据不会获得传输层加密保护。
 
-端口与配对码每次开启 MCP 服务都会变化，请使用 App 当前复制的值；配对码不要写入项目仓库、日志或 Git 提交。连续错码返回 `429` 时，按 `Retry-After` 等待后再试。
+端口与配对码每次开启 MCP 服务都会变化；配对码不要写入项目仓库、日志或 Git 提交。本机 `device.json` 权限应为 600。连续错码返回 `429` 时，按 `Retry-After` 等待后再试。
 
 ## 契约获取
 
@@ -61,13 +61,13 @@ CLI **不内置**技能或学习计划 Schema。
 2. **用户提供的连接/配对材料**（`connectionInfo`：App 复制文案中的地址与 `设备：品牌 · Android · 分辨率 · App` 等；也可传结构化 `host`/`port`/`code`/`deviceLabel`）——设备画像来自用户材料，**不**由 CLI 假定 pair 响应体结构
 3. **CLI 能力摘要**
 
-传入的地址/配对码会**临时覆盖**本 MCP 进程的 `KUAIYOU_DEVICE_IP` / `KUAIYOU_MCP_PAIRING_CODE`（无需先重启 MCP）；请同步更新 `mcp.json` env（`KUAIYOU_DEVICE_IP` 为 `host:port`，不要带 `http://`），否则下次冷启动仍回旧值。
+传入的地址/配对码会覆盖本 MCP 进程的目标，并写入本机配置（默认 `~/.config/autoace/device.json`，可用 `KUAIYOU_CONFIG_DIR` 覆盖）。下次冷启动优先使用该记录，无需改 mcp.json。换设备或 App 重新开启 MCP 时再 `pair_device` 即可覆盖。
 
 设备工具在请求前会探活 `GET /api/mcp/health`（免鉴权）。超时、连接拒绝或网络失败会**立刻停止**，提示设备已断开、需要重新配对，并清掉进程内的旧地址覆盖与 pair 缓存——不会继续对失效 IP 截屏/拉 schema。HTTP `401`/`429` 是配对码或限流，不是掉线；业务路由 `404` 是 App 过旧，请升级。
 
-配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文；若用户同条消息已给出编写任务则立即继续，否则等待指示。
+配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文（默认自动化主路径，不要把 `plans_*` 当并列主功能）；若用户同条消息已给出编写任务则立即继续，否则等待指示。写技能前优先调用 `observe_screen`（截屏 + 可交互节点），不要一上来拉取完整 `get_ui_tree`。调试时 `push_reactive_skill` 可带 `run: true`（或随后 `run_skill` 带 `wait: true`），CLI 会等到技能结束或失败并返回 log 摘要，失败附带截屏；手机确认框仍须用户点，CLI 不能跳过。
 
-### 计划 MCP tools（与设备 §3 对齐）
+### 计划 MCP tools（仅当用户明确要求领域教练 / 学习计划）
 
 | Tool | 设备路由 |
 |------|----------|

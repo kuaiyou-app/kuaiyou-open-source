@@ -6,7 +6,7 @@
 
 0. **规则认设备：** 生成规则以 `get_kuaiyou_prompts` 为准；字段以设备 schema 为准。忽略 prompts / schema 中的未知字段。本文只谈选择器策略与反模式，不是第二份动作表。禁止把 prompts 正文写入仓库。
 1. **先契约后草稿**：未调用 `get_kuaiyou_schema` 前不编造动作名或选择器字段。
-2. **先看屏再点**：用 `get_ui_tree`（必要时 `capture_screenshot`）确认可交互节点，再写定位。
+2. **先看屏再点**：优先 `observe_screen`（截屏 + 可交互节点）；无此工具再用 `get_ui_tree` / `capture_screenshot`。确认可交互节点后再写定位。
 3. **稳定位优于坐标**：优先文本、contentDescription、resourceId、语义/相对定位；避免绝对像素坐标（分辨率一变即失效）。
 4. **页面变了就重读**：目标 App 或快游升级后，重新拉 schema + UI，不要沿用旧 JSON 结构当真理。
 5. **小步可验证**：先最短路径能跑通，再加分支；每次改完必须 `validate_kuaiyou_skill`。
@@ -33,16 +33,15 @@
 ## Debug loop (required when taps miss)
 
 ```text
-capture_screenshot / get_ui_tree
-  → 对照 get_execution_log / get_skill_status
-  → 修正选择器或等待
+observe_screen（无则 capture_screenshot / get_ui_tree）
   → validate_kuaiyou_skill
-  → push_reactive_skill（等手机确认）
-  → run_skill（若需主动跑）
-  → 再看 log / 截屏
+  → push_reactive_skill（run: true：等手机确认后自动 run，等到结束/失败，返回 log 摘要；失败带截屏）
+  → 或先 push 再 run_skill(wait: true)
 ```
 
-点偏时优先怀疑：文案微变、列表多项同文案、弹层未关闭、动画未结束——用 UI 树证据改，不要只靠猜。
+仍须在手机上点确认。CLI 只做可观测等待，**不能**跳过 App 确认框，也不要宣称已免确认。
+
+点偏时优先怀疑：文案微变、列表多项同文案、弹层未关闭、动画未结束——用返回的截屏 / log / 再一次 `observe_screen` 当证据改，不要只靠猜。`get_skill_status` / `get_execution_log` 仍可用于不等待的中途查看。
 
 ## Learning plans
 
