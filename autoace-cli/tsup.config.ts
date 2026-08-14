@@ -10,6 +10,7 @@ export default defineConfig({
     'src/skill-lint.ts',
     'src/plan-lint.ts',
     'src/observe.ts',
+    'src/skill-debug.ts',
     'src/pair-summary.ts',
   ],
   format: ['cjs', 'esm'],

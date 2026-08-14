@@ -27,6 +27,6 @@ MCP 名称建议 `autoace`。env 可填 App 复制的 `KUAIYOU_DEVICE_IP`（含�
 
 ## 写技能
 
-`pair_device` → `get_kuaiyou_prompts` + `get_kuaiyou_schema` → `observe_screen`（无此工具则截屏 + UI 树）→ 起草 → `validate_kuaiyou_skill` → `push_reactive_skill`（手机确认）→ 不准则看 log 后再 `observe_screen`。
+`pair_device` → `get_kuaiyou_prompts` + `get_kuaiyou_schema` → `observe_screen`（无此工具则截屏 + UI 树）→ 起草 → `validate_kuaiyou_skill` → `push_reactive_skill`（手机确认；可 `run: true` 等到结束）→ 不准则看返回的 log / 截屏后再 `observe_screen`。
 
 契约只认设备；`examples/` 与 `skills/` 是用法参考和社区目录，不是契约。引擎回归夹具在 `autoace-cli/fixtures/device/`。领域教练需 App 支持 `plans_*`。

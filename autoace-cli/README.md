@@ -65,7 +65,7 @@ CLI **不内置**技能或学习计划 Schema。
 
 设备工具在请求前会探活 `GET /api/mcp/health`（免鉴权）。超时、连接拒绝或网络失败会**立刻停止**，提示设备已断开、需要重新配对，并清掉进程内的旧地址覆盖与 pair 缓存——不会继续对失效 IP 截屏/拉 schema。HTTP `401`/`429` 是配对码或限流，不是掉线；业务路由 `404` 是 App 过旧，请升级。
 
-配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文；若用户同条消息已给出编写任务则立即继续，否则等待指示。写技能前优先调用 `observe_screen`（截屏 + 可交互节点），不要一上来拉取完整 `get_ui_tree`。
+配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文；若用户同条消息已给出编写任务则立即继续，否则等待指示。写技能前优先调用 `observe_screen`（截屏 + 可交互节点），不要一上来拉取完整 `get_ui_tree`。调试时 `push_reactive_skill` 可带 `run: true`（或随后 `run_skill` 带 `wait: true`），CLI 会等到技能结束或失败并返回 log 摘要，失败附带截屏；手机确认框仍须用户点，CLI 不能跳过。
 
 ### 计划 MCP tools（与设备 §3 对齐）
 

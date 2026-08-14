@@ -81,8 +81,8 @@ Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道�
 1. `get_kuaiyou_prompts` + `get_kuaiyou_schema`。缺 prompts（404）→ **停**，请用户升级 App；禁止用本仓库 / craft.md 当权威提示词。
 2. 用返回的 `skill.template` 填 `{{userRequirement}}` 作为生成规则。执行 `skill.agentMust`（先契约、能看屏则看屏、产出完整技能 JSON、validate 再 push）。**不要**执行 `clipboardMust`（那是手机剪贴板外壳）。**忽略未知字段**；禁止把 prompts 正文写入仓库或当缓存。
 3. 看屏优先 `observe_screen`；无此工具则 `capture_screenshot` + `get_ui_tree`。不要默认拉取完整 UI 树。
-4. `validate_kuaiyou_skill` → `push_reactive_skill`（`skillJson` 可以是 JSON 字符串或 `.json` 文件路径，与 validate 相同；须手机确认）。
-5. 点偏：`run_skill` / `get_execution_log` / 再 `observe_screen` 对照后改 JSON 再推。
+4. `validate_kuaiyou_skill` → `push_reactive_skill`（`skillJson` 可以是 JSON 字符串或 `.json` 文件路径，与 validate 相同；须手机确认。`run: true` 时 CLI 会等你确认后启动并等到结束/失败，返回 log 摘要；失败带截屏。CLI **不能**跳过 App 确认框。）
+5. 点偏：看上一步返回的 log / 截屏，或 `run_skill`（`wait: true`）/ `get_execution_log` / 再 `observe_screen` 对照后改 JSON 再推。
 
 禁止：`agentId`、`readText`、`setClipboard`、`askAgent`。
 

@@ -34,15 +34,14 @@
 
 ```text
 observe_screen（无则 capture_screenshot / get_ui_tree）
-  → 对照 get_execution_log / get_skill_status
-  → 修正选择器或等待
   → validate_kuaiyou_skill
-  → push_reactive_skill（等手机确认）
-  → run_skill（若需主动跑）
-  → 再看 log / observe_screen
+  → push_reactive_skill（run: true：等手机确认后自动 run，等到结束/失败，返回 log 摘要；失败带截屏）
+  → 或先 push 再 run_skill(wait: true)
 ```
 
-点偏时优先怀疑：文案微变、列表多项同文案、弹层未关闭、动画未结束——用 UI 树证据改，不要只靠猜。
+仍须在手机上点确认。CLI 只做可观测等待，**不能**跳过 App 确认框，也不要宣称已免确认。
+
+点偏时优先怀疑：文案微变、列表多项同文案、弹层未关闭、动画未结束——用返回的截屏 / log / 再一次 `observe_screen` 当证据改，不要只靠猜。`get_skill_status` / `get_execution_log` 仍可用于不等待的中途查看。
 
 ## Learning plans
 

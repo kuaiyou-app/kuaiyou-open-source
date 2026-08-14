@@ -851,3 +851,205 @@ test("HTTP 401 after a live health probe is pairing-code, not disconnect", async
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+function lifecycleServer(onRequest) {
+  return http.createServer((req, res) => {
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
+    if (req.url === "/api/mcp/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+    if (req.url === "/api/mcp/schema") {
+      res.writeHead(200, { "Content-Type": "application/schema+json" });
+      res.end(JSON.stringify(schemaForAction("notify")));
+      return;
+    }
+    onRequest(req, res);
+  });
+}
+
+async function withProbe(server, fn) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const probe = new Client({ name: "debug-loop-probe", version: "1.0.0" }, { capabilities: {} });
+  const transport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: probeEnv({ KUAIYOU_DEVICE_URL: `http://127.0.0.1:${port}`, KUAIYOU_DEVICE_IP: "" }),
+  });
+  await probe.connect(transport);
+  try {
+    return await fn(probe);
+  } finally {
+    await probe.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+test("run_skill without wait stays fire-and-forget", async () => {
+  const hits = [];
+  const server = lifecycleServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    if (req.url === "/api/mcp/run" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ started: true }));
+      return;
+    }
+    res.writeHead(500);
+    res.end();
+  });
+  await withProbe(server, async (probe) => {
+    const res = await probe.callTool({ name: "run_skill", arguments: { skillId: "open-wechat" } });
+    assert.notEqual(res.isError, true, res.content?.[0]?.text);
+    assert.match(res.content[0].text, /started/i);
+    assert.ok(hits.some((h) => h.startsWith("POST /api/mcp/run")));
+    assert.equal(hits.some((h) => h.includes("/api/mcp/status")), false);
+  });
+});
+
+test("run_skill wait=true returns log summary after the skill succeeds", async () => {
+  let statusHits = 0;
+  const server = lifecycleServer((req, res) => {
+    if (req.url === "/api/mcp/run" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ started: true }));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/status")) {
+      statusHits += 1;
+      const body = statusHits === 1 ? { running: true } : { running: false, success: true };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/logs")) {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("goal g1 done\n");
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await withProbe(server, async (probe) => {
+    const res = await probe.callTool({
+      name: "run_skill",
+      arguments: { skillId: "open-wechat", wait: true, timeoutMs: 5000 },
+    });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.notEqual(res.isError, true, text);
+    assert.match(text, /finished: succeeded/);
+    assert.match(text, /goal g1 done/);
+    assert.equal(res.content.some((c) => c.type === "image"), false);
+  });
+});
+
+test("run_skill wait=true attaches a screenshot when the skill fails", async () => {
+  const server = lifecycleServer((req, res) => {
+    if (req.url === "/api/mcp/run" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ started: true }));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/status")) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ running: false, success: false, error: "no node" }));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/logs")) {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ERROR tap missed\n");
+      return;
+    }
+    if (req.url === "/api/mcp/screenshot") {
+      res.writeHead(200, { "Content-Type": "image/png" });
+      res.end(PNG_1X1);
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await withProbe(server, async (probe) => {
+    const res = await probe.callTool({
+      name: "run_skill",
+      arguments: { skillId: "open-wechat", wait: true, timeoutMs: 5000 },
+    });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true);
+    assert.match(text, /finished: failed/);
+    assert.match(text, /tap missed/);
+    assert.ok(res.content.some((c) => c.type === "image"), "expected failure screenshot");
+  });
+});
+
+test("push_reactive_skill run=true waits for phone confirm then returns the debug loop", async () => {
+  let runHits = 0;
+  const server = lifecycleServer((req, res) => {
+    if (req.url === "/api/mcp/import" && req.method === "POST") {
+      const chunks = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, pendingConfirm: true }));
+      });
+      return;
+    }
+    if (req.url === "/api/mcp/run" && req.method === "POST") {
+      runHits += 1;
+      if (runHits === 1) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "not confirmed" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ started: true }));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/status")) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ running: false, success: true }));
+      return;
+    }
+    if (req.url && req.url.startsWith("/api/mcp/logs")) {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("opened wechat\n");
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await withProbe(server, async (probe) => {
+    const res = await probe.callTool({
+      name: "push_reactive_skill",
+      arguments: {
+        skillId: "open-wechat",
+        skillJson: validSkillJson("open-wechat"),
+        run: true,
+        timeoutMs: 5000,
+      },
+    });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.notEqual(res.isError, true, text);
+    assert.match(text, /finished: succeeded/);
+    assert.match(text, /opened wechat/);
+    assert.match(text, /不能跳过 App 确认框/);
+    assert.match(text, /no developer-mode auto-confirm/);
+    assert.doesNotMatch(text, /already skipped|免确认已生效/);
+    assert.equal(runHits, 2);
+  });
+});
+
+test("run_skill wait rejects an out-of-range timeoutMs", async () => {
+  await assert.rejects(
+    client.callTool({
+      name: "run_skill",
+      arguments: { skillId: "open-wechat", wait: true, timeoutMs: 50 },
+    }),
+    /timeoutMs must be an integer between/
+  );
+});
+

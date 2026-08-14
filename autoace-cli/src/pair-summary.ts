@@ -196,11 +196,11 @@ export function formatCliCapabilities(): string {
     "技能（自动化 JSON）：",
     "- get_kuaiyou_schema — 拉取设备权威技能 Schema",
     "- get_kuaiyou_prompts — 拉取设备权威技能/计划生成规则（勿写入仓库）",
-    "- validate_kuaiyou_skill / push_reactive_skill — 校验并部署（手机确认后生效）",
+    "- validate_kuaiyou_skill / push_reactive_skill — 校验并部署（手机确认后生效；push 可带 run=true 等到结束）",
     "- list_skills / delete_skill / run_skill / stop_skill / get_skill_status / get_execution_log",
     "领域教练计划（需 App 暴露 /api/mcp/plans*）：",
     "- plans_schema / plans_list / plans_get / plans_validate / plans_deploy / plans_delete",
-    "说明：部署技能或计划成功通常只表示 pendingConfirm；须用户在手机上确认。",
+    "说明：部署技能或计划成功通常只表示 pendingConfirm；须用户在手机上确认。CLI 不能跳过该确认框。run_skill(wait=true) 或 push(run=true) 会等到技能结束/失败并返回 log 摘要，失败带截屏。",
   ].join("\n");
 }
 

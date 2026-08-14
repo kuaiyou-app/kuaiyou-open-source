@@ -24,6 +24,15 @@ import {
 } from "./device-schema.js";
 import { enhanceUiNodes, formatObserveSummary, summarizeScreenTree } from "./observe.js";
 import {
+  PHONE_CONFIRM_NOTICE,
+  asBool,
+  formatDebugLoopText,
+  resolveWaitTimeoutMs,
+  startThenWaitForSkill,
+  type FailureScreenshot,
+  type DebugWaitResult,
+} from "./skill-debug.js";
+import {
   DeviceDisconnectedError,
   HttpStatusError,
   addressToBaseUrl,
@@ -320,7 +329,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel. skillJson accepts the same JSON string or .json file path as validate_kuaiyou_skill.",
+          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel. skillJson accepts the same JSON string or .json file path as validate_kuaiyou_skill. Optional run=true starts the skill after deploy and waits until it stops or fails, returning a log summary (screenshot on failure). The phone confirmation dialog is still required — this CLI cannot skip it.",
         inputSchema: {
           type: "object",
           properties: {
@@ -331,6 +340,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             skillJson: {
               type: "string",
               description: "Skill JSON content, or an absolute / relative .json file path (same as validate_kuaiyou_skill).",
+            },
+            run: {
+              type: "boolean",
+              description:
+                "If true, start the skill after a successful deploy and wait until it terminates or fails. Default false. Phone confirmation is still required; this CLI does not skip the App dialog.",
+            },
+            timeoutMs: {
+              type: "integer",
+              minimum: 1000,
+              maximum: 180000,
+              description: "Max wait when run=true (default 90000, maximum 180000).",
             },
           },
           required: ["skillId", "skillJson"],
@@ -378,11 +398,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "run_skill",
-        description: "Start executing a skill on the device (requires App /api/mcp/run).",
+        description:
+          "Start executing a skill on the device (POST /api/mcp/run). Optional wait=true polls status until the skill stops or fails, then returns a log summary; failure/timeout attaches a screenshot. Does not skip phone confirmation.",
         inputSchema: {
           type: "object",
           properties: {
             skillId: { type: "string" },
+            wait: {
+              type: "boolean",
+              description:
+                "If true, wait until the skill terminates or fails, then return get_execution_log summary. Default false (fire-and-forget).",
+            },
+            timeoutMs: {
+              type: "integer",
+              minimum: 1000,
+              maximum: 180000,
+              description: "Max wait when wait=true (default 90000, maximum 180000).",
+            },
           },
           required: ["skillId"],
         },
@@ -629,6 +661,107 @@ async function deviceApiPost(pathname: string, body: object): Promise<{
   });
 }
 
+async function captureFailureScreenshot(): Promise<FailureScreenshot | undefined> {
+  const baseUrl = getDeviceBaseUrl();
+  if (!baseUrl) return undefined;
+  try {
+    await ensureDeviceReachable(baseUrl);
+    await ensureDevicePaired(baseUrl);
+    const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
+    return { data: buffer.toString("base64"), mimeType: sniffImageMime(buffer) };
+  } catch {
+    return undefined;
+  }
+}
+
+function skillDebugLoop(
+  skillId: string,
+  waited: DebugWaitResult,
+  pendingConfirmWaited: boolean,
+  extraLogs: string
+) {
+  const isError =
+    waited.outcome === "failed" ||
+    waited.outcome === "timeout" ||
+    waited.outcome === "disconnected" ||
+    waited.outcome === "error";
+  const content: Array<
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  > = [];
+  if (waited.screenshot) {
+    content.push({
+      type: "image",
+      data: waited.screenshot.data,
+      mimeType: waited.screenshot.mimeType,
+    });
+  }
+  content.push({
+    type: "text",
+    text: formatDebugLoopText({
+      skillId,
+      outcome: waited.outcome,
+      elapsedMs: waited.elapsedMs,
+      statusText: waited.statusText,
+      logSummary: waited.logSummary,
+      screenshotAttached: Boolean(waited.screenshot),
+      screenshotNote: waited.screenshotNote,
+      pendingConfirmWaited,
+      extraLogs: `${extraLogs}${waited.logs}`,
+    }),
+  });
+  return { content, isError };
+}
+
+async function runSkillDebugLoop(
+  skillId: string,
+  timeoutMs: number,
+  waitForConfirm: boolean,
+  extraLogs = ""
+) {
+  const started = await startThenWaitForSkill({
+    start: () => deviceApiPost("/api/mcp/run", { skillId }),
+    getStatus: () => deviceApiGet(`/api/mcp/status?skillId=${encodeURIComponent(skillId)}`),
+    getLog: (limit) => {
+      const q = new URLSearchParams({ skillId, limit: String(limit) });
+      return deviceApiGet(`/api/mcp/logs?${q.toString()}`);
+    },
+    getScreenshot: captureFailureScreenshot,
+    timeoutMs,
+    waitForConfirm,
+  });
+  if (started.kind === "start-failed") {
+    if (started.start.disconnected) {
+      return deviceDisconnectedFailure(`${extraLogs}${started.start.logs}`);
+    }
+    if (started.pendingConfirmWaited && !started.start.ok && started.start.status === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `Timed out waiting for phone confirmation before starting ${skillId}.\n` +
+              `${PHONE_CONFIRM_NOTICE}\n\nLogs:\n${extraLogs}${started.start.logs}`,
+          },
+        ],
+        isError: true as const,
+      };
+    }
+    return devicePostFailure("run_skill", "start the skill", {
+      ...started.start,
+      logs: `${extraLogs}${started.start.logs}`,
+    });
+  }
+  if (started.waited.outcome === "disconnected") {
+    return deviceDisconnectedFailure(`${extraLogs}${started.waited.logs}`);
+  }
+  return skillDebugLoop(
+    skillId,
+    started.waited,
+    started.pendingConfirmWaited,
+    `${extraLogs}${started.startLogs}`
+  );
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "get_kuaiyou_schema": {
@@ -795,7 +928,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "push_reactive_skill": {
-      const { skillId, skillJson } = request.params.arguments as any;
+      const { skillId, skillJson, run, timeoutMs } = request.params.arguments as any;
       if (!skillId || !skillJson) {
         throw new McpError(ErrorCode.InvalidParams, "skillId and skillJson are required");
       }
@@ -803,6 +936,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new McpError(
           ErrorCode.InvalidParams,
           "skillId must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ (no path separators or shell metacharacters)"
+        );
+      }
+      const runAfterPush = asBool(run) === true;
+      let waitTimeoutMs = 90_000;
+      try {
+        waitTimeoutMs = resolveWaitTimeoutMs(timeoutMs);
+      } catch (error) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          error instanceof Error ? error.message : String(error)
         );
       }
 
@@ -846,7 +989,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!baseUrl) return missingDeviceIp("push_reactive_skill", logs);
 
       logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
-      return withDeviceLock(async () => {
+      const deployed = await withDeviceLock(async () => {
         try {
           await ensureDeviceReachable(baseUrl);
           await ensureDevicePaired(baseUrl);
@@ -862,25 +1005,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logs += `HTTP push successful!\n`;
             if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
             return {
-              content: [{ type: "text" as const, text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}` }],
+              ok: true as const,
+              body: response.body ?? "",
             };
           }
           logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
           if (response.body) logs += `Device response: ${response.body.slice(0, 2000)}\n`;
-          // The device answered — this is a rejection, not a broken channel.
-          return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
+          return {
+            ok: false as const,
+            response: deviceRejected("deploy the skill", response.status, response.body ?? "", logs),
+          };
         } catch (e: any) {
           logs += `HTTP push failed: ${e.message}\n`;
           if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
-            return noteUnreachableAndFail(e, logs);
+            return { ok: false as const, response: noteUnreachableAndFail(e, logs) };
           }
           if (e instanceof HttpStatusError) {
-            return deviceRejected("deploy the skill", e.status, "", logs);
+            return {
+              ok: false as const,
+              response: deviceRejected("deploy the skill", e.status, "", logs),
+            };
           }
         }
 
-        return deviceHttpFailure("deploy the skill", logs);
+        return { ok: false as const, response: deviceHttpFailure("deploy the skill", logs) };
       });
+
+      if (!deployed.ok) return deployed.response;
+
+      if (!runAfterPush) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Successfully deployed skill ${skillId} via HTTP!\n\nLogs:\n${logs}`,
+            },
+          ],
+        };
+      }
+
+      return runSkillDebugLoop(skillId, waitTimeoutMs, true, logs);
     }
 
     case "observe_screen": {
@@ -1042,15 +1206,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "run_skill": {
-      const { skillId } = request.params.arguments as any;
+      const { skillId, wait, timeoutMs } = request.params.arguments as any;
       if (!skillId || !SKILL_ID_PATTERN.test(skillId)) {
         throw new McpError(ErrorCode.InvalidParams, "valid skillId is required");
       }
-      const res = await deviceApiPost("/api/mcp/run", { skillId });
-      if (!res.ok) {
-        return devicePostFailure("run_skill", "start the skill", res);
+      const waitEnabled = asBool(wait) === true;
+      let waitTimeoutMs = 90_000;
+      try {
+        waitTimeoutMs = resolveWaitTimeoutMs(timeoutMs);
+      } catch (error) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          error instanceof Error ? error.message : String(error)
+        );
       }
-      return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
+      if (!waitEnabled) {
+        const res = await deviceApiPost("/api/mcp/run", { skillId });
+        if (!res.ok) {
+          return devicePostFailure("run_skill", "start the skill", res);
+        }
+        return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
+      }
+      return runSkillDebugLoop(skillId, waitTimeoutMs, false);
     }
 
     case "stop_skill": {

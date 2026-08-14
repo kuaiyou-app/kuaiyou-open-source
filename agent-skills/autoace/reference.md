@@ -28,12 +28,12 @@
 | Tool | 作用 |
 | --- | --- |
 | `validate_kuaiyou_skill` | 拉契约 + 校验 + 业务 lint |
-| `push_reactive_skill` | 校验后部署；`skillJson` 与 validate 一样可以是 JSON 或 `.json` 路径；成功多为 `pendingConfirm`，须手机确认 |
+| `push_reactive_skill` | 校验后部署；`skillJson` 与 validate 一样可以是 JSON 或 `.json` 路径；成功多为 `pendingConfirm`，须手机确认。可选 `run: true`：等确认后启动并等到结束/失败，返回 log 摘要（失败带截屏）。CLI 不能跳过确认框 |
 | `list_skills` | 列出设备上已装技能 |
 | `delete_skill` | 按 id 删除 |
-| `run_skill` | 开始执行 |
+| `run_skill` | 开始执行。可选 `wait: true` 轮询 status 直到结束/失败，返回 log 摘要（失败/超时带截屏） |
 | `stop_skill` | 停止当前执行 |
-| `get_skill_status` | 执行状态 |
+| `get_skill_status` | 执行状态（`wait`/`run` 未开时的中途查看） |
 | `get_execution_log` | 最近执行日志 |
 
 ### Plans lifecycle
