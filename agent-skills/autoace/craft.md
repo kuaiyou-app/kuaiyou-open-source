@@ -4,6 +4,7 @@
 
 ## Principles
 
+0. **规则认设备：** 生成规则以 `get_kuaiyou_prompts` 为准；字段以设备 schema 为准。忽略 prompts / schema 中的未知字段。本文只谈选择器策略与反模式，不是第二份动作表。禁止把 prompts 正文写入仓库。
 1. **先契约后草稿**：未调用 `get_kuaiyou_schema` 前不编造动作名或选择器字段。
 2. **先看屏再点**：用 `get_ui_tree`（必要时 `capture_screenshot`）确认可交互节点，再写定位。
 3. **稳定位优于坐标**：优先文本、contentDescription、resourceId、语义/相对定位；避免绝对像素坐标（分辨率一变即失效）。

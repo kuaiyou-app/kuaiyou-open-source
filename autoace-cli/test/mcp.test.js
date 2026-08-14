@@ -37,9 +37,19 @@ before(async () => {
       res.end(JSON.stringify({ status: "ok", paired: true, pairedAt: Date.now() }));
       return;
     }
+    if (req.url === "/api/mcp/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", service: "kuaiyou-mcp" }));
+      return;
+    }
     if (req.url === "/api/mcp/schema") {
       res.writeHead(200, { "Content-Type": "application/schema+json" });
       res.end(JSON.stringify(schemaForAction("notify")));
+      return;
+    }
+    if (req.url === "/api/mcp/prompts") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", version: 1, skill: { id: "skill.generate" }, planOutlines: [] }));
       return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });
@@ -72,6 +82,7 @@ test("tools/list exposes core and debug tools", async () => {
   for (const required of [
     "capture_screenshot",
     "get_kuaiyou_schema",
+    "get_kuaiyou_prompts",
     "get_ui_tree",
     "push_reactive_skill",
     "validate_kuaiyou_skill",
@@ -90,6 +101,49 @@ test("get_kuaiyou_schema returns the current App contract", async () => {
   const res = await client.callTool({ name: "get_kuaiyou_schema", arguments: {} });
   assert.notEqual(res.isError, true);
   assert.deepEqual(JSON.parse(res.content[0].text), schemaForAction("notify"));
+});
+
+test("get_kuaiyou_prompts returns the App generation rules payload", async () => {
+  const res = await client.callTool({ name: "get_kuaiyou_prompts", arguments: {} });
+  assert.notEqual(res.isError, true);
+  assert.equal(JSON.parse(res.content[0].text).status, "ok");
+});
+
+test("get_kuaiyou_prompts 404 tells the Agent to upgrade the App", async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  const probeTransport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: {
+      ...process.env,
+      KUAIYOU_DEVICE_URL: `http://127.0.0.1:${port}`,
+      KUAIYOU_DEVICE_IP: "",
+      KUAIYOU_MCP_PAIRING_CODE: "000000",
+    },
+  });
+  const probe = new Client({ name: "prompts-404-probe", version: "1.0.0" }, { capabilities: {} });
+  await probe.connect(probeTransport);
+  try {
+    const res = await probe.callTool({ name: "get_kuaiyou_prompts", arguments: {} });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true);
+    assert.match(text, /upgrade|升级/);
+    assert.match(text, /Do not use any prompt text bundled/);
+  } finally {
+    await probe.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("pair_device synthesizes device context from user connectionInfo paste", async () => {
@@ -484,13 +538,94 @@ test("mutating device tools are serialized through the real MCP handler", async 
     assert.notEqual(run.isError, true);
     assert.notEqual(remove.isError, true);
     assert.equal(maxActive, 1);
+    assert.ok(paths.includes("/api/mcp/health"));
     assert.ok(paths.includes("/api/mcp/pair"));
     assert.ok(paths.includes("/api/mcp/run"));
     assert.ok(paths.includes("/api/mcp/skills/delete"));
     assert.deepEqual(
-      paths.filter((p) => p !== "/api/mcp/pair").sort(),
+      paths.filter((p) => p !== "/api/mcp/pair" && p !== "/api/mcp/health").sort(),
       ["/api/mcp/run", "/api/mcp/skills/delete"].sort()
     );
+  } finally {
+    await probe.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("unreachable device is reported as disconnected and does not call business routes", async () => {
+  const closed = http.createServer();
+  await new Promise((resolve) => closed.listen(0, "127.0.0.1", resolve));
+  const { port } = closed.address();
+  await new Promise((resolve) => closed.close(resolve));
+
+  const probeTransport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: {
+      ...process.env,
+      KUAIYOU_DEVICE_URL: "",
+      KUAIYOU_DEVICE_IP: `127.0.0.1:${port}`,
+      KUAIYOU_MCP_PAIRING_CODE: "000000",
+    },
+  });
+  const probe = new Client({ name: "disconnect-probe", version: "1.0.0" }, { capabilities: {} });
+  await probe.connect(probeTransport);
+  try {
+    const res = await probe.callTool({ name: "capture_screenshot", arguments: {} });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true);
+    assert.match(text, /断开/);
+    assert.match(text, /重新配对/);
+    assert.match(text, /KUAIYOU_DEVICE_IP/);
+    assert.doesNotMatch(text, /phone and computer are on the same network/);
+    assert.doesNotMatch(text, /pairing code was rejected/);
+  } finally {
+    await probe.close();
+  }
+});
+
+test("HTTP 401 after a live health probe is pairing-code, not disconnect", async () => {
+  const hits = [];
+  const server = http.createServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    if (req.url === "/api/mcp/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", service: "kuaiyou-mcp" }));
+      return;
+    }
+    if (req.url === "/api/mcp/pair" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "error", errorMessage: "unauthorized" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  const probeTransport = new StdioClientTransport({
+    command: "node",
+    args: [SERVER_ENTRY],
+    env: {
+      ...process.env,
+      KUAIYOU_DEVICE_URL: `http://127.0.0.1:${port}`,
+      KUAIYOU_DEVICE_IP: "",
+      KUAIYOU_MCP_PAIRING_CODE: "000000",
+    },
+  });
+  const probe = new Client({ name: "auth-probe", version: "1.0.0" }, { capabilities: {} });
+  await probe.connect(probeTransport);
+  try {
+    const res = await probe.callTool({ name: "get_ui_tree", arguments: {} });
+    const text = (res.content || []).map((c) => c.text || "").join("\n");
+    assert.equal(res.isError, true);
+    assert.match(text, /HTTP 401/);
+    assert.match(text, /pairing code was rejected/);
+    assert.doesNotMatch(text, /断开/);
+    assert.doesNotMatch(text, /重新配对/);
+    assert.ok(hits.includes("GET /api/mcp/health"));
+    assert.ok(hits.includes("GET /api/mcp/ui_tree"));
   } finally {
     await probe.close();
     await new Promise((resolve) => server.close(resolve));

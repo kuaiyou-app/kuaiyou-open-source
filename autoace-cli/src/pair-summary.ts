@@ -194,6 +194,7 @@ export function formatCliCapabilities(): string {
     "- get_ui_tree — 获取当前 UI 节点树",
     "技能（自动化 JSON）：",
     "- get_kuaiyou_schema — 拉取设备权威技能 Schema",
+    "- get_kuaiyou_prompts — 拉取设备权威技能/计划生成规则（勿写入仓库）",
     "- validate_kuaiyou_skill / push_reactive_skill — 校验并部署（手机确认后生效）",
     "- list_skills / delete_skill / run_skill / stop_skill / get_skill_status / get_execution_log",
     "领域教练计划（需 App 暴露 /api/mcp/plans*）：",

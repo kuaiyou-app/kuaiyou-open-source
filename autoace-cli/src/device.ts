@@ -31,6 +31,56 @@ export class ResponseTooLargeError extends Error {
 }
 
 /**
+ * Current KUAIYOU_DEVICE_IP / session override cannot be reached (timeout,
+ * ECONNREFUSED, or GET /api/mcp/health never answered). Not for HTTP 401/404.
+ */
+export class DeviceDisconnectedError extends Error {
+  readonly endpoint: string;
+  constructor(endpoint: string, cause?: unknown) {
+    const detail = cause instanceof Error ? cause.message : cause ? String(cause) : "";
+    super(
+      `Device disconnected or address is stale (${endpoint})${detail ? `: ${detail}` : ""}`
+    );
+    this.name = "DeviceDisconnectedError";
+    this.endpoint = endpoint;
+    if (cause instanceof Error) {
+      this.cause = cause;
+    }
+  }
+}
+
+const UNREACHABLE_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+/** True for timeout / connection-refused / DNS — not for HTTP 401/404/429. */
+export function isDeviceUnreachable(error: unknown): boolean {
+  if (error instanceof DeviceDisconnectedError) return true;
+  if (error instanceof TimeoutError) return true;
+  if (error instanceof HttpStatusError) return false;
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const rec = current as { code?: unknown; cause?: unknown; name?: unknown; message?: unknown };
+    if (typeof rec.code === "string" && UNREACHABLE_CODES.has(rec.code)) return true;
+    const message = typeof rec.message === "string" ? rec.message : "";
+    if (rec.name === "TypeError" && /fetch failed|network/i.test(message)) return true;
+    current = rec.cause;
+  }
+  return false;
+}
+
+/**
  * In-process session overrides from pair_device.connectionInfo (or structured
  * host/port/code). Takes precedence over mcp.json env for this MCP process so
  * Agents can retarget without waiting for a Cursor MCP reload.
@@ -143,9 +193,33 @@ let pairedSessionKey: string | undefined;
 /** Last successful pair body for the current session (device context). */
 let lastPairBody: string | undefined;
 
+const HEALTH_PATH = "/api/mcp/health";
+/** Skip a repeat health probe for the same baseUrl within this window. */
+const HEALTH_TTL_MS = 3000;
+let lastHealthOkAt = 0;
+let lastHealthBaseUrl: string | undefined;
+
+function normalizedBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function forgetDeviceHealth(): void {
+  lastHealthOkAt = 0;
+  lastHealthBaseUrl = undefined;
+}
+
 export function clearDevicePairingSession(): void {
   pairedSessionKey = undefined;
   lastPairBody = undefined;
+  forgetDeviceHealth();
+}
+
+/**
+ * Transport died: drop the cached pair handshake and any session override so
+ * the next call does not keep hammering a stale host:port.
+ */
+export function markDeviceDisconnected(): void {
+  clearSessionDeviceOverride();
 }
 
 export type EnsurePairedResult = {
@@ -309,6 +383,47 @@ async function withAbort<T>(timeoutMs: number, fn: (signal: AbortSignal) => Prom
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Unauthenticated GET — used only for /api/mcp/health. Non-2xx is still "device answered". */
+async function httpGetNoAuth(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number
+): Promise<{ status: number; statusText: string; body: string }> {
+  return withAbort(timeoutMs, async (signal) => {
+    const res = await fetch(url, { signal });
+    const body = await readBodyTextOrEmpty(res, maxBytes);
+    return { status: res.status, statusText: res.statusText, body };
+  });
+}
+
+/**
+ * Probe GET /api/mcp/health (no Bearer) before device GET/POST.
+ * HTTP 200 (or any HTTP status) = channel up. Timeout / ECONNREFUSED = disconnected.
+ * Short TTL avoids a probe on every tool in a burst; a later call after TTL
+ * (or after markDeviceDisconnected) will notice a restarted device / new port.
+ */
+export async function ensureDeviceReachable(
+  baseUrl: string,
+  timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
+): Promise<void> {
+  const endpoint = normalizedBaseUrl(baseUrl);
+  if (lastHealthBaseUrl === endpoint && Date.now() - lastHealthOkAt < HEALTH_TTL_MS) {
+    return;
+  }
+  const url = `${endpoint}${HEALTH_PATH}`;
+  try {
+    await httpGetNoAuth(url, timeoutMs, 64 * 1024);
+    lastHealthBaseUrl = endpoint;
+    lastHealthOkAt = Date.now();
+  } catch (error) {
+    if (isDeviceUnreachable(error)) {
+      markDeviceDisconnected();
+      throw new DeviceDisconnectedError(endpoint, error);
+    }
+    throw error;
   }
 }
 
