@@ -4,7 +4,9 @@
 
 ## Full MCP tool surface
 
-与 `autoace-cli` `tools/list` / `formatCliCapabilities()` 对齐。缺工具 → 升级 CLI 并按 [SKILL.md](SKILL.md)「Cursor 如何真正重载 autoace」重载。
+`tools/list` 仍注册全部工具。配对成功 brief（`formatCliCapabilities()`）只列**默认自动化主路径**；本表才是完整面。缺工具 → 升级 CLI 并按 [SKILL.md](SKILL.md)「Cursor 如何真正重载 autoace」重载。
+
+**默认主路径：** `pair_device` → `observe_screen` → `get_kuaiyou_prompts` + `get_kuaiyou_schema` → `validate_kuaiyou_skill` → `push_reactive_skill`（可 `run: true`）。`plans_*` 仅当用户明确要求学习计划 / 领域教练时使用。
 
 ### Session / contract
 
@@ -37,6 +39,8 @@
 | `get_execution_log` | 最近执行日志 |
 
 ### Plans lifecycle
+
+仅当用户明确要求领域教练 / 学习计划时使用；不要在写技能开场时调用。
 
 | Tool | 设备路由 |
 | --- | --- |

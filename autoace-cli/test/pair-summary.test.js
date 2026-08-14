@@ -70,11 +70,15 @@ test("formatPairSuccessMessage combines user paste context with pair success and
   assert.match(text, /1080x2400/);
   assert.match(text, /App：2\.9\.0/);
   assert.match(text, /observe_screen/);
-  assert.match(text, /capture_screenshot/);
-  assert.match(text, /plans_deploy/);
+  assert.match(text, /push_reactive_skill/);
+  assert.match(text, /默认自动化主路径/);
+  assert.match(text, /plans_\*/);
+  assert.doesNotMatch(text, /plans_deploy/);
   assert.doesNotMatch(text, /IGNORE/);
   assert.doesNotMatch(text, /541490/);
   assert.match(formatConnectedDeviceContext({ connection: parseConnectionInfo("") }), /未找到/);
   assert.match(formatCliCapabilities(), /get_kuaiyou_schema/);
   assert.match(formatCliCapabilities(), /get_kuaiyou_prompts/);
+  assert.match(formatCliCapabilities(), /仅当用户明确要求/);
+  assert.doesNotMatch(formatCliCapabilities(), /plans_schema \/ plans_list/);
 });

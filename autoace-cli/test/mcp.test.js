@@ -170,8 +170,10 @@ test("pair_device synthesizes device context from user connectionInfo paste", as
   assert.match(text, /Android 14/);
   assert.match(text, /1080x2400/);
   assert.match(text, /App：9\.9\.9/);
-  assert.match(text, /capture_screenshot/);
-  assert.match(text, /plans_deploy/);
+  assert.match(text, /observe_screen/);
+  assert.match(text, /push_reactive_skill/);
+  assert.match(text, /plans_\*/);
+  assert.doesNotMatch(text, /plans_deploy/);
   assert.match(text, /展示给用户/);
   assert.match(text, new RegExp(`地址：127\\.0\\.0\\.1:${schemaServerPort}`));
   assert.match(text, /已保存到本机/);

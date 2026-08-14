@@ -13,6 +13,7 @@
 ### Changed
 
 - 社区技能目录去测试化：`skills/` 改为打开微信/支付宝、关弹窗、文案签到；头条回归 JSON 与抖音无限上滑移到 `autoace-cli/fixtures/device/`。`examples/` 同步改为打开应用与拦截弹窗并签到。
+- 配对成功后的能力清单改为默认自动化主路径（pair / observe / 校验推送 / 可选等到结束）；`plans_*` 仅在用户明确要求领域教练时再用。MCP 仍注册全部工具，不改名。
 
 ### Fixed
 

@@ -460,18 +460,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_schema",
         description:
-          "Fetch the authoritative LearningPlan JSON Schema from the App via GET /api/mcp/plans/schema. Schema is never bundled in this CLI — always runtime from the device.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Fetch the authoritative LearningPlan JSON Schema from the App via GET /api/mcp/plans/schema. Schema is never bundled in this CLI — always runtime from the device.",
         inputSchema: { type: "object", properties: {} },
       },
       {
         name: "plans_list",
         description:
-          "List domain-coach learning plans on the device (GET /api/mcp/plans). Summary fields: id, name, goal, phaseCount, nodeCount, updatedAt.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. List domain-coach learning plans on the device (GET /api/mcp/plans). Summary fields: id, name, goal, phaseCount, nodeCount, updatedAt.",
         inputSchema: { type: "object", properties: {} },
       },
       {
         name: "plans_get",
-        description: "Fetch a full LearningPlan JSON by id (GET /api/mcp/plans/{id}).",
+        description:
+          "Only when the user explicitly asks for a 领域教练 learning plan. Fetch a full LearningPlan JSON by id (GET /api/mcp/plans/{id}).",
         inputSchema: {
           type: "object",
           properties: {
@@ -483,7 +484,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_validate",
         description:
-          "Validate a LearningPlan JSON against the device schema (GET /api/mcp/plans/schema), then POST /api/mcp/plans/validate for on-device structural/DAG checks. Does not persist.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Validate a LearningPlan JSON against the device schema (GET /api/mcp/plans/schema), then POST /api/mcp/plans/validate for on-device structural/DAG checks. Does not persist.",
         inputSchema: {
           type: "object",
           properties: {
@@ -498,7 +499,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_deploy",
         description:
-          "Validate then deploy a LearningPlan to the device (POST /api/mcp/plans). Success means pendingConfirm=true — the user must confirm on the phone before it appears in 领域教练. Same id overwrites outline and progress; new id may return HTTP 409 if quota is full.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Validate then deploy a LearningPlan to the device (POST /api/mcp/plans). Success means pendingConfirm=true — the user must confirm on the phone before it appears in 领域教练. Same id overwrites outline and progress; new id may return HTTP 409 if quota is full.",
         inputSchema: {
           type: "object",
           properties: {
@@ -513,7 +514,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "plans_delete",
         description:
-          "Delete a learning plan immediately on the device (POST /api/mcp/plans/delete with { planId }). No confirmation dialog.",
+          "Only when the user explicitly asks for a 领域教练 learning plan. Delete a learning plan immediately on the device (POST /api/mcp/plans/delete with { planId }). No confirmation dialog.",
         inputSchema: {
           type: "object",
           properties: {

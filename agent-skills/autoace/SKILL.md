@@ -42,11 +42,13 @@ description: >-
 ## MCP capability gate
 
 1. 会话目录缺工具但 CLI `tools/list` 已有 → **新开对话**
-2. 缺 `pair_device` / `get_kuaiyou_prompts` / `plans_*` → 升级 `autoace-cli@latest` 并按下方重载 MCP
+2. 缺 `pair_device` / `get_kuaiyou_prompts` → 升级 `autoace-cli@latest` 并按下方重载 MCP。缺 `plans_*` **不**等于 CLI 坏了，也不挡写技能。
 3. 有 `pair_device` → Session start；无则用其他工具静默配对并请补贴「复制给 Agent」全文
 4. 无 `get_kuaiyou_prompts` → 不做技能/计划生成（可仍看屏、跑已有技能）；勿用仓库 / craft.md 当权威提示词
 5. 无 `plans_*` → 不做计划，勿编造 schema
 6. 无 `observe_screen` → 用 `capture_screenshot` + `get_ui_tree`；有则不要默认拉完整树
+
+配对成功后的能力清单是**默认自动化主路径**，不是 `tools/list` 全表。默认：`pair_device` → `observe_screen` → `get_kuaiyou_prompts` + `get_kuaiyou_schema` → `validate_kuaiyou_skill` → `push_reactive_skill`（可 `run: true`）。`plans_*` 仅当用户明确要求学习计划 / 领域教练 / 考证大纲时再用。
 
 ### 目录有工具 ≠ 通道可用
 
@@ -73,7 +75,7 @@ Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道�
 3. 工具返回「设备已断开或地址已失效」、超时或连不上 → **先认断开**：请用户到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 `pair_device`（`connectionInfo` 全文）。成功即覆盖本机保存的目标。**不要**用旧 IP 继续截屏/schema，也不要把 curl 打旧地址当成已恢复。
 4. HTTP `401` / `429` → 配对码错或限流，复制**当前**码；不要说成设备掉线。HTTP `404`（health 通但业务路由无）→ 升级 App，不是断开。
 5. 若工具调用报 `Not connected`、或进程已死但 UI 仍 ready → 走上方 Cursor 重载步骤（stdio 死通道）。换地址本身不需要这一层。
-6. 无论 MCP 或 curl：向用户展示配对摘要（地址、设备画像、可用能力）；无「设备：」行则请补贴。curl 仅在无 MCP 进程时作兜底，且必须打**当前** App 地址。
+6. 无论 MCP 或 curl：向用户展示配对摘要（地址、设备画像、**默认主路径**能力）。不要把 `plans_*` 平铺成并列主功能。无「设备：」行则请补贴。curl 仅在无 MCP 进程时作兜底，且必须打**当前** App 地址。
 7. 同条已有任务则继续，否则等待。
 
 ## Skills flow
@@ -87,6 +89,8 @@ Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道�
 禁止：`agentId`、`readText`、`setClipboard`、`askAgent`。
 
 ## Plans flow
+
+仅当用户明确要求学习计划 / 领域教练 / 考证大纲时进入本节。没提就不要调 `plans_*`。
 
 1. `get_kuaiyou_prompts` + `plans_schema`。缺任一 → 停。忽略 prompts 未知字段；禁止把返回文案提交进 git。
 2. 按用户场景取 `planOutlines[]`（默认 `study`）。用 `template` 填 `{{goal}}` `{{background}}` `{{durationDays}}` `{{dailyMinutes}}`；仅当用户明确要求增强时用 `enhancedTemplate`。
