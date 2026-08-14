@@ -48,6 +48,7 @@ env:
 CLI **不内置**技能或学习计划 Schema。
 
 - 技能：`get_kuaiyou_schema` → `GET /api/mcp/schema`；`validate_kuaiyou_skill` / `push_reactive_skill` 运行时拉取同一端点。
+- 生成规则：`get_kuaiyou_prompts` → `GET /api/mcp/prompts`（设备权威；勿缓存/写入仓库；404 请升级 App，禁止用仓内 markdown 兜底）。
 - 领域教练计划：`plans_schema` → `GET /api/mcp/plans/schema`；`plans_validate` / `plans_deploy` 运行时拉取该端点。**禁止**把 `learning-plan.schema.json` 镜像进本仓当权威。
 
 客户端是唯一契约源；未连接设备时不能执行完整契约校验。计划路由需 App 版本支持（与 `feat/mcp-plan-import` 联调）；若设备返回 404，工具会提示当前 App 尚未暴露该路由。
@@ -60,7 +61,9 @@ CLI **不内置**技能或学习计划 Schema。
 2. **用户提供的连接/配对材料**（`connectionInfo`：App 复制文案中的地址与 `设备：品牌 · Android · 分辨率 · App` 等；也可传结构化 `host`/`port`/`code`/`deviceLabel`）——设备画像来自用户材料，**不**由 CLI 假定 pair 响应体结构
 3. **CLI 能力摘要**
 
-传入的地址/配对码会**临时覆盖**本 MCP 进程的 `KUAIYOU_DEVICE_IP` / `KUAIYOU_MCP_PAIRING_CODE`（无需先重启 MCP）；请同步更新 `mcp.json` env，否则下次冷启动仍回旧值。
+传入的地址/配对码会**临时覆盖**本 MCP 进程的 `KUAIYOU_DEVICE_IP` / `KUAIYOU_MCP_PAIRING_CODE`（无需先重启 MCP）；请同步更新 `mcp.json` env（`KUAIYOU_DEVICE_IP` 为 `host:port`，不要带 `http://`），否则下次冷启动仍回旧值。
+
+设备工具在请求前会探活 `GET /api/mcp/health`（免鉴权）。超时、连接拒绝或网络失败会**立刻停止**，提示设备已断开、需要重新配对，并清掉进程内的旧地址覆盖与 pair 缓存——不会继续对失效 IP 截屏/拉 schema。HTTP `401`/`429` 是配对码或限流，不是掉线；业务路由 `404` 是 App 过旧，请升级。
 
 配套 Agent Skill（`autoace`）要求：配对后先展示该综合上下文；若用户同条消息已给出编写任务则立即继续，否则等待指示。
 

@@ -74,4 +74,5 @@ test("formatPairSuccessMessage combines user paste context with pair success and
   assert.doesNotMatch(text, /541490/);
   assert.match(formatConnectedDeviceContext({ connection: parseConnectionInfo("") }), /未找到/);
   assert.match(formatCliCapabilities(), /get_kuaiyou_schema/);
+  assert.match(formatCliCapabilities(), /get_kuaiyou_prompts/);
 });

@@ -23,14 +23,18 @@ import {
   SKILL_SCHEMA_PATH,
 } from "./device-schema.js";
 import {
+  DeviceDisconnectedError,
   HttpStatusError,
   addressToBaseUrl,
   clearDevicePairingSession,
   ensureDevicePaired,
+  ensureDeviceReachable,
   httpGetText,
   httpGetBuffer,
   httpPostJson,
   httpPostForm,
+  isDeviceUnreachable,
+  markDeviceDisconnected,
   resolveDeviceBaseUrl,
   setSessionDeviceOverride,
   sniffImageMime,
@@ -93,6 +97,31 @@ function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
   };
 }
 
+const DEVICE_DISCONNECTED_USER_MESSAGE =
+  "设备已断开或地址已失效，需要重新配对。请到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 pair_device（connectionInfo 全文）。" +
+  "同步改 mcp.json 的 KUAIYOU_DEVICE_IP（host:port，不要带 http://）和 KUAIYOU_MCP_PAIRING_CODE，然后重载 MCP，否则下次冷启动仍打旧地址。\n" +
+  "The configured device is disconnected or its address is stale. Re-pair: re-copy「复制给 Agent」from the App, call pair_device with the full connectionInfo, " +
+  "update mcp.json KUAIYOU_DEVICE_IP (host:port, no http://) and KUAIYOU_MCP_PAIRING_CODE, then reload MCP.";
+
+function deviceDisconnectedFailure(logs: string): ToolErrorResponse {
+  return {
+    content: [
+      {
+        type: "text",
+        text: DEVICE_DISCONNECTED_USER_MESSAGE + (logs ? `\n\nLogs:\n${logs}` : ""),
+      },
+    ],
+    isError: true,
+  };
+}
+
+function noteUnreachableAndFail(error: unknown, logs: string): ToolErrorResponse {
+  if (!(error instanceof DeviceDisconnectedError)) {
+    markDeviceDisconnected();
+  }
+  return deviceDisconnectedFailure(logs);
+}
+
 function deviceHttpFailure(what: string, logs: string) {
   return {
     content: [
@@ -114,7 +143,7 @@ function deviceHttpFailure(what: string, logs: string) {
  * problems sent people checking their Wi-Fi when the actual cause was a skill
  * the App rejected, an expired pairing code, or a route the build lacks.
  */
-function deviceRejected(what: string, status: number, body: string, logs: string) {
+function deviceRejected(what: string, status: number, body: string, logs: string): ToolErrorResponse {
   // Keyed by status rather than a nested ternary: these hints get edited often
   // and the ternary chain had already picked up a duplicated branch.
   const hints: Record<number, string> = {
@@ -134,7 +163,7 @@ function deviceRejected(what: string, status: number, body: string, logs: string
   return {
     content: [
       {
-        type: "text",
+        type: "text" as const,
         text: `The device refused to ${what} (HTTP ${status}).\n${hint}${detail}\n\nLogs:\n${logs}`,
       },
     ],
@@ -146,12 +175,13 @@ function deviceRejected(what: string, status: number, body: string, logs: string
 function devicePostFailure(
   toolName: string,
   what: string,
-  res: { status: number; body: string; logs: string }
+  res: { status: number; body: string; logs: string; disconnected?: boolean }
 ) {
   if (!getDeviceBaseUrl()) return missingDeviceIp(toolName, res.logs);
+  if (res.disconnected) return deviceDisconnectedFailure(res.logs);
   if (res.status === 404) return deviceRejected(what, 404, res.body, res.logs);
   if (res.status > 0) return deviceRejected(what, res.status, res.body, res.logs);
-  return deviceHttpFailure(what, res.logs);
+  return deviceDisconnectedFailure(res.logs);
 }
 
 function toolNotImplemented(name: string, hint: string) {
@@ -202,13 +232,21 @@ async function loadDeviceContract(
 
   const logs = `GET ${baseUrl}${schemaPath}\n`;
   try {
+    await ensureDeviceReachable(baseUrl);
     await ensureDevicePaired(baseUrl);
     return { ok: true, validator: await fetchDeviceContractValidator(baseUrl, schemaPath) };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    const failLogs = `${logs}Failed: ${detail}\n`;
+    if (error instanceof DeviceDisconnectedError || isDeviceUnreachable(error)) {
+      return { ok: false, response: noteUnreachableAndFail(error, failLogs) };
+    }
+    if (error instanceof HttpStatusError) {
+      return { ok: false, response: deviceRejected(`fetch the authoritative ${kind} schema`, error.status, "", failLogs) };
+    }
     return {
       ok: false,
-      response: schemaUnavailable(toolName, schemaPath, kind, detail, `${logs}Failed: ${detail}\n`),
+      response: schemaUnavailable(toolName, schemaPath, kind, detail, failLogs),
     };
   }
 }
@@ -220,6 +258,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: "get_kuaiyou_schema",
         description:
           "Fetch the authoritative skill JSON Schema from the connected App via GET /api/mcp/schema. Also completes device pairing so the App settings page shows 已配对.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "get_kuaiyou_prompts",
+        description:
+          "Fetch App generation rules via GET /api/mcp/prompts (skill template + per-scenario plan outlines + hydrate). Authority is the device only — never cache or commit the payload; ignore unknown fields. 404 means upgrade the App; do not use repo markdown as a fallback.",
         inputSchema: { type: "object", properties: {} },
       },
       {
@@ -517,16 +561,24 @@ async function resolvePlanJsonInput(planJson: string): Promise<string> {
 
 async function deviceApiGet(
   pathname: string
-): Promise<{ ok: true; text: string } | { ok: false; logs: string; status?: number }> {
+): Promise<
+  | { ok: true; text: string }
+  | { ok: false; logs: string; status?: number; disconnected?: boolean }
+> {
   let logs = "";
   const baseUrl = getDeviceBaseUrl();
   if (!baseUrl) {
     return { ok: false, logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
   }
   try {
+    await ensureDeviceReachable(baseUrl);
     await ensureDevicePaired(baseUrl);
   } catch (e: any) {
-    logs += `POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+    logs += `GET ${baseUrl}/api/mcp/health or POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+    if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+      if (!(e instanceof DeviceDisconnectedError)) markDeviceDisconnected();
+      return { ok: false, logs, disconnected: true };
+    }
     return { ok: false, logs, status: e instanceof HttpStatusError ? e.status : undefined };
   }
   logs += `GET ${baseUrl}${pathname}\n`;
@@ -535,24 +587,40 @@ async function deviceApiGet(
     return { ok: true, text };
   } catch (e: any) {
     logs += `HTTP failed: ${e.message}\n`;
+    if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+      markDeviceDisconnected();
+      return { ok: false, logs, disconnected: true };
+    }
     return { ok: false, logs, status: e instanceof HttpStatusError ? e.status : undefined };
   }
 }
 
 /**
- * A 404 means the App build genuinely lacks the route; anything else (timeout,
- * connection refused, 401) is a channel/config problem. Reporting a timeout as
- * "not available on this App build" sent people chasing the wrong thing.
+ * A 404 means the App build genuinely lacks the route; 401/429 are pairing/rate
+ * limits; timeout / connection refused is a stale address — re-pair, don't keep
+ * calling the old IP. Reporting a timeout as "not available on this App build"
+ * sent people chasing the wrong thing.
  */
-function deviceGetFailure(toolName: string, what: string, res: { logs: string; status?: number }) {
+function deviceGetFailure(
+  toolName: string,
+  what: string,
+  res: { logs: string; status?: number; disconnected?: boolean }
+) {
   if (!getDeviceBaseUrl()) return missingDeviceIp(toolName, res.logs);
+  if (res.disconnected) return deviceDisconnectedFailure(res.logs);
   if (res.status === 404) return toolNotImplemented(toolName, res.logs);
   // A status at all means the device answered; only a missing status is a transport failure.
   if (res.status !== undefined) return deviceRejected(what, res.status, "", res.logs);
-  return deviceHttpFailure(what, res.logs);
+  return deviceDisconnectedFailure(res.logs);
 }
 
-async function deviceApiPost(pathname: string, body: object): Promise<{ ok: boolean; status: number; body: string; logs: string }> {
+async function deviceApiPost(pathname: string, body: object): Promise<{
+  ok: boolean;
+  status: number;
+  body: string;
+  logs: string;
+  disconnected?: boolean;
+}> {
   return withDeviceLock(async () => {
     const baseUrl = getDeviceBaseUrl();
     let logs = "";
@@ -560,9 +628,14 @@ async function deviceApiPost(pathname: string, body: object): Promise<{ ok: bool
       return { ok: false, status: 0, body: "", logs: "KUAIYOU_DEVICE_URL and KUAIYOU_DEVICE_IP are not set.\n" };
     }
     try {
+      await ensureDeviceReachable(baseUrl);
       await ensureDevicePaired(baseUrl);
     } catch (e: any) {
-      logs += `POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+      logs += `GET ${baseUrl}/api/mcp/health or POST ${baseUrl}/api/mcp/pair\nHTTP failed: ${e.message}\n`;
+      if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+        if (!(e instanceof DeviceDisconnectedError)) markDeviceDisconnected();
+        return { ok: false, status: 0, body: "", logs, disconnected: true };
+      }
       return {
         ok: false,
         status: e instanceof HttpStatusError ? e.status : 0,
@@ -578,6 +651,10 @@ async function deviceApiPost(pathname: string, body: object): Promise<{ ok: bool
       return { ok: response.ok, status: response.status, body: response.body, logs };
     } catch (e: any) {
       logs += `HTTP failed: ${e.message}\n`;
+      if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+        markDeviceDisconnected();
+        return { ok: false, status: 0, body: "", logs, disconnected: true };
+      }
       return { ok: false, status: 0, body: "", logs };
     }
   });
@@ -591,6 +668,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return deviceGetFailure(
           "get_kuaiyou_schema",
           "fetch the authoritative skill schema",
+          res
+        );
+      }
+      return { content: [{ type: "text", text: res.text }] };
+    }
+
+    case "get_kuaiyou_prompts": {
+      const res = await deviceApiGet("/api/mcp/prompts");
+      if (!res.ok) {
+        if (!getDeviceBaseUrl()) return missingDeviceIp("get_kuaiyou_prompts", res.logs);
+        if (res.status === 404) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  "get_kuaiyou_prompts is not available on this App build.\n" +
+                  "Please upgrade 快游大师 so GET /api/mcp/prompts exists.\n" +
+                  "Do not use any prompt text bundled in this CLI or Skill repo.\n" +
+                  (res.logs || ""),
+              },
+            ],
+            isError: true,
+          };
+        }
+        return deviceGetFailure(
+          "get_kuaiyou_prompts",
+          "fetch generation prompts from the App",
           res
         );
       }
@@ -648,6 +753,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       let logs = `POST ${baseUrl}/api/mcp/pair\n`;
       try {
+        await ensureDeviceReachable(baseUrl);
         clearDevicePairingSession();
         const paired = await ensureDevicePaired(baseUrl);
         logs += paired.legacyNoPairRoute
@@ -671,6 +777,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       } catch (e: any) {
         logs += `HTTP failed: ${e.message}\n`;
+        if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+          return noteUnreachableAndFail(e, logs);
+        }
         if (e instanceof HttpStatusError) {
           return deviceRejected("pair", e.status, "", logs);
         }
@@ -756,6 +865,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
       return withDeviceLock(async () => {
         try {
+          await ensureDeviceReachable(baseUrl);
+          await ensureDevicePaired(baseUrl);
           let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
           // Backward-compatible fallback for older App builds that still expect form posts.
           if (response.status === 415 || response.status === 400) {
@@ -777,6 +888,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return deviceRejected("deploy the skill", response.status, response.body ?? "", logs);
         } catch (e: any) {
           logs += `HTTP push failed: ${e.message}\n`;
+          if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+            return noteUnreachableAndFail(e, logs);
+          }
+          if (e instanceof HttpStatusError) {
+            return deviceRejected("deploy the skill", e.status, "", logs);
+          }
         }
 
         return deviceHttpFailure("deploy the skill", logs);
@@ -791,6 +908,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
       try {
+        await ensureDeviceReachable(baseUrl);
         await ensureDevicePaired(baseUrl);
         const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
         try {
@@ -806,7 +924,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       } catch (e: any) {
         logs += `HTTP fetch failed: ${e.message}\n`;
-        // A status means the device answered and refused; no status means transport.
+        if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+          return noteUnreachableAndFail(e, logs);
+        }
         if (e instanceof HttpStatusError) {
           return deviceRejected("fetch the screen nodes", e.status, "", logs);
         }
@@ -823,6 +943,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
       try {
+        await ensureDeviceReachable(baseUrl);
         await ensureDevicePaired(baseUrl);
         const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
         const base64 = buffer.toString("base64");
@@ -837,7 +958,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       } catch (e: any) {
         logs += `HTTP fetch failed: ${e.message}\n`;
-        // A status means the device answered and refused; no status means transport.
+        if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+          return noteUnreachableAndFail(e, logs);
+        }
         if (e instanceof HttpStatusError) {
           return deviceRejected("capture the screenshot", e.status, "", logs);
         }

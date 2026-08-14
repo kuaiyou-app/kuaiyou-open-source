@@ -12,6 +12,7 @@
 | --- | --- |
 | `pair_device` | `POST /api/mcp/pair`；用 `connectionInfo` 或结构化 `host`/`port`/`code`/`deviceLabel` 合成设备画像 + 能力摘要；有地址/码时覆盖本进程 env |
 | `get_kuaiyou_schema` | `GET /api/mcp/schema`（技能权威契约） |
+| `get_kuaiyou_prompts` | `GET /api/mcp/prompts`（技能/计划生成规则；需 App 支持） |
 | `plans_schema` | `GET /api/mcp/plans/schema`（计划权威契约；需 App 支持） |
 
 ### Screen
@@ -48,19 +49,19 @@
 
 | 现象 | 处理 |
 | --- | --- |
-| `Not connected` / 工具调用失败但目录仍 ready | 目录有工具 ≠ 通道可用；按 [SKILL.md](SKILL.md) Cursor 重载步骤；同时可用下方 curl 兜底，勿干等 |
-| `401` | 配对码错误或过期；让用户重新开启 MCP 服务并复制配置；`pair_device`+`connectionInfo` 可临时覆盖，仍应更新 env 后重载 MCP |
-| `429` + `Retry-After` | 错码退避；等待指定秒数后再试，勿连打 |
-| 连不上 / 超时 | 确认同网、`KUAIYOU_DEVICE_IP` 含端口、手机 MCP 仍开；有新粘贴则先 `pair_device` 覆盖会话端点 |
-| plans / 部分路由 `404` 或 “not available yet” | 当前 App 未暴露该路由；停止该分支，勿用仓库 schema 顶替 |
+| 设备已断开 / 地址已失效 / 超时 / 连不上 | **先认断开**：请用户到 App 重新复制「复制给 Agent」，`pair_device`（connectionInfo 全文），并改 `mcp.json` 的 `KUAIYOU_DEVICE_IP`（host:port，不要带 `http://`）与 `KUAIYOU_MCP_PAIRING_CODE` 后重载 MCP。不要用旧 IP 继续截屏/schema，也不要把 curl 打旧地址当成已恢复 |
+| `Not connected` / 工具调用失败但目录仍 ready | 第二层：mcp.json 冷启动仍是旧值或 stdio 死通道；按 [SKILL.md](SKILL.md) Cursor 重载步骤；curl 仅打**当前** App 地址 |
+| `401` | 配对码错误或过期；让用户复制当前码；`pair_device`+`connectionInfo` 可临时覆盖。**不是**设备掉线 |
+| `429` + `Retry-After` | 错码退避；等待指定秒数后再试，勿连打。**不是**设备掉线 |
+| prompts / plans `404`（health 通但业务路由无） | 当前 App 未暴露该路由；请升级 App，停止该分支，勿用仓库 schema / craft.md 顶替。**不是**断开 |
 | plans `409` | 配额满；应先 `plans_list`；删除或覆盖已有 id 后再 deploy |
-| `pair_device` 不在 tools/list | CLI 过旧或缓存；`npx -y autoace-cli@<latest>` / 清缓存后重载 |
+| `pair_device` / `get_kuaiyou_prompts` 不在 tools/list | CLI 过旧或缓存；`npx -y autoace-cli@<latest>` / 清缓存后重载 |
 | validate 失败 | 按返回错误改 JSON；以设备 schema 为准，勿猜字段 |
 | 推送成功但手机无技能 | 提醒用户点确认对话框；成功仅表示进入确认流；双推时第二份可能排队 |
 
-## Fallback sync (no MCP / Not connected)
+## Fallback sync (no MCP process)
 
-MCP 断连时**立即**用 curl，不要干等重连。先配对，再拉契约后 POST。必须带 `Authorization: Bearer <PAIRING_CODE>`。
+仅当本机**没有**可用 MCP 进程时用 curl。若 CLI 已回报断开，先按上表重新配对，**不要**用旧 `KUAIYOU_DEVICE_IP` 再 curl。必须带 `Authorization: Bearer <PAIRING_CODE>`，且 `<DEVICE_IP>:<PORT>` 必须是 App **当前**地址。
 
 配对后仍按 [SKILL.md](SKILL.md) 向用户输出配对摘要（地址、设备画像、当前能做的事）。
 
@@ -73,6 +74,11 @@ curl -X POST "http://<DEVICE_IP>:<PORT>/api/mcp/pair" \
 
 ```bash
 curl "http://<DEVICE_IP>:<PORT>/api/mcp/schema" \
+  -H "Authorization: Bearer <PAIRING_CODE>"
+```
+
+```bash
+curl "http://<DEVICE_IP>:<PORT>/api/mcp/prompts" \
   -H "Authorization: Bearer <PAIRING_CODE>"
 ```
 
