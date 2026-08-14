@@ -10,7 +10,7 @@
 
 | Tool | 作用 |
 | --- | --- |
-| `pair_device` | `POST /api/mcp/pair`；用 `connectionInfo` 或结构化 `host`/`port`/`code`/`deviceLabel` 合成设备画像 + 能力摘要；有地址/码时覆盖本进程 env |
+| `pair_device` | `POST /api/mcp/pair`；用 `connectionInfo` 或结构化 `host`/`port`/`code`/`deviceLabel` 合成设备画像 + 能力摘要；覆盖本进程目标并写入本机 `device.json` |
 | `get_kuaiyou_schema` | `GET /api/mcp/schema`（技能权威契约） |
 | `get_kuaiyou_prompts` | `GET /api/mcp/prompts`（技能/计划生成规则；需 App 支持） |
 | `plans_schema` | `GET /api/mcp/plans/schema`（计划权威契约；需 App 支持） |
@@ -50,7 +50,7 @@
 
 | 现象 | 处理 |
 | --- | --- |
-| 设备已断开 / 地址已失效 / 超时 / 连不上 | **先认断开**：请用户到 App 重新复制「复制给 Agent」，`pair_device`（connectionInfo 全文），并改 `mcp.json` 的 `KUAIYOU_DEVICE_IP`（host:port，不要带 `http://`）与 `KUAIYOU_MCP_PAIRING_CODE` 后重载 MCP。不要用旧 IP 继续截屏/schema，也不要把 curl 打旧地址当成已恢复 |
+| 设备已断开 / 地址已失效 / 超时 / 连不上 | **先认断开**：请用户到 App 重新复制「复制给 Agent」，`pair_device`（connectionInfo 全文）。成功会覆盖本机保存的地址，无需改 mcp.json。不要用旧 IP 继续截屏/schema |
 | `Not connected` / 工具调用失败但目录仍 ready | 第二层：mcp.json 冷启动仍是旧值或 stdio 死通道；按 [SKILL.md](SKILL.md) Cursor 重载步骤；curl 仅打**当前** App 地址 |
 | `401` | 配对码错误或过期；让用户复制当前码；`pair_device`+`connectionInfo` 可临时覆盖。**不是**设备掉线 |
 | `429` + `Retry-After` | 错码退避；等待指定秒数后再试，勿连打。**不是**设备掉线 |

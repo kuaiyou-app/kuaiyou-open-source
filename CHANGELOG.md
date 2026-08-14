@@ -7,6 +7,7 @@
 ### Added
 
 - MCP 工具 `observe_screen`：一次返回截屏 + 可交互节点摘要（文案 / id / bounds / centerPct）和当前包名。写选择器时优先用它，而不是完整 `get_ui_tree`。
+- `pair_device` 成功后把地址与配对码写入本机 `~/.config/autoace/device.json`（可用 `KUAIYOU_CONFIG_DIR` 覆盖）。冷启动优先用这份记录，不必为换地址改 mcp.json。
 
 ### Fixed
 

@@ -1,6 +1,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const http = require("node:http");
+
+process.env.KUAIYOU_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "autoace-cfg-"));
 const {
   clearDeviceSchemaCache,
   fetchDeviceContractValidator,

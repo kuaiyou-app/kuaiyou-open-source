@@ -27,7 +27,7 @@ description: >-
 
 - 手机开启 MCP 服务并复制连接信息
 - Node ≥ 20：`npm install -g autoace-cli@latest`
-- MCP 名 `autoace`；env 必填 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`；同网；无 USB 自动发现
+- MCP 名 `autoace`；env 可选 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`。`pair_device` 成功后写入本机 `~/.config/autoace/device.json`，冷启动不必改 mcp.json。同网；无 USB 自动发现
 - Skill：`npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y`
 - 配对码不进仓库
 
@@ -53,11 +53,11 @@ description: >-
 Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道可用，也**不等于**手机地址仍有效。
 
 - 工具返回「设备已断开或地址已失效」/ 超时 / 连不上 → **先认断开**，请用户重新配对（见 Session start），不要空转截屏/schema。
-- 若工具调用报 `Not connected`、或进程已死但 UI 仍 ready → 按「Cursor 如何真正重载 autoace」处理（第二层：mcp.json 冷启动仍是旧值）。
+- 若工具调用报 `Not connected`、或进程已死但 UI 仍 ready → 按「Cursor 如何真正重载 autoace」处理（stdio 死通道，不是地址配置）。
 
 ### Cursor 如何真正重载 autoace
 
-改 `mcp.json` env、升级 CLI、或杀了旧进程后仍连不上时（第二层；第一层是 CLI 自己探活并说人话）：
+改 `mcp.json`、升级 CLI、或杀了旧进程后仍连不上时（stdio 死通道；换地址请用 `pair_device`，不必为换地址而重载）：
 
 1. Cursor Settings → MCP：对 `autoace` **Disable → Enable**（或删除后按原配置重新添加）
 2. 仍不行 → **完全退出并重启 Cursor**（不是只关窗口）
@@ -69,10 +69,10 @@ Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道�
 ## Session start
 
 1. 收集配对材料（全文最佳；也可结构化 `host`/`port`/`code`/`deviceLabel`）
-2. 尝试 `pair_device`，传入 `connectionInfo`（及可选结构化字段）。CLI 会把材料中的地址/配对码**临时覆盖**本进程 env，无需先重启 MCP；仍请用户同步改 `mcp.json` 的 `KUAIYOU_DEVICE_IP`（host:port，不要带 `http://`）与 `KUAIYOU_MCP_PAIRING_CODE`，否则下次冷启动回到旧值。
-3. 工具返回「设备已断开或地址已失效」、超时或连不上 → **先认断开**：请用户到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 `pair_device`（`connectionInfo` 全文）。**不要**用旧 IP 继续截屏/schema，也不要把 curl 打旧地址当成已恢复。
+2. 尝试 `pair_device`，传入 `connectionInfo`（及可选结构化字段）。CLI 会用材料中的地址/配对码覆盖本进程目标，并写入本机配置（默认 `~/.config/autoace/device.json`）。**不必**为了换地址去改 mcp.json 或重载 MCP。
+3. 工具返回「设备已断开或地址已失效」、超时或连不上 → **先认断开**：请用户到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 `pair_device`（`connectionInfo` 全文）。成功即覆盖本机保存的目标。**不要**用旧 IP 继续截屏/schema，也不要把 curl 打旧地址当成已恢复。
 4. HTTP `401` / `429` → 配对码错或限流，复制**当前**码；不要说成设备掉线。HTTP `404`（health 通但业务路由无）→ 升级 App，不是断开。
-5. 若 mcp.json 仍是旧值（冷启动继续打旧地址）→ 走上方 Cursor 重载步骤（Disable→Enable / 新开对话），这是第二层。
+5. 若工具调用报 `Not connected`、或进程已死但 UI 仍 ready → 走上方 Cursor 重载步骤（stdio 死通道）。换地址本身不需要这一层。
 6. 无论 MCP 或 curl：向用户展示配对摘要（地址、设备画像、可用能力）；无「设备：」行则请补贴。curl 仅在无 MCP 进程时作兜底，且必须打**当前** App 地址。
 7. 同条已有任务则继续，否则等待。
 

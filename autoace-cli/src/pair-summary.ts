@@ -212,6 +212,7 @@ export function formatPairSuccessMessage(opts: {
   legacyNoPairRoute?: boolean;
   /** True when connectionInfo/structured fields overrode process env for this session. */
   sessionOverrideApplied?: boolean;
+  persistResult?: { ok: true; path: string } | { ok: false; error: string };
 }): string {
   const parts: string[] = [];
   if (opts.legacyNoPairRoute) {
@@ -222,9 +223,15 @@ export function formatPairSuccessMessage(opts: {
       parts.push(`pairedAt=${opts.ack.pairedAt}`);
     }
   }
-  if (opts.sessionOverrideApplied) {
+  if (opts.persistResult?.ok) {
     parts.push(
-      "本次请求已用配对材料中的地址/配对码临时覆盖 MCP 进程 env（无需先重启 MCP）。请同步更新 mcp.json 中的 KUAIYOU_DEVICE_IP 与 KUAIYOU_MCP_PAIRING_CODE，否则下次冷启动仍会回到旧值。"
+      `已保存到本机 ${opts.persistResult.path}（权限 600，勿提交到 Git）。下次冷启动会自动使用，无需改 mcp.json。换设备或 App 重新开启 MCP 时再 pair_device 即可覆盖。`
+    );
+  } else if (opts.sessionOverrideApplied) {
+    parts.push(
+      opts.persistResult
+        ? `本机保存失败（${opts.persistResult.error}）。本次进程已用配对材料覆盖地址，但冷启动仍可能回到 mcp.json 旧值。`
+        : "本次请求已用配对材料中的地址/配对码覆盖本进程目标（无需先重启 MCP）。"
     );
   }
   parts.push("");

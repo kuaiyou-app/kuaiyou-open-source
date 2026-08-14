@@ -79,7 +79,9 @@ env:
   KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
-不要只在普通终端前台运行 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启服务都会变化，请始终使用 App 当前复制的值。
+env 可省略：把 App「复制给 Agent」交给 Agent 调用 `pair_device` 即可。成功后写入本机 `~/.config/autoace/device.json`（权限 600），下次冷启动不必改 mcp.json。端口与配对码每次开启服务都会变化，请用当前复制的值重新配对。
+
+不要只在普通终端前台运行 stdio server，也不要把配对码提交到 Git。
 
 也可全局安装：`npm install -g autoace-cli`。
 

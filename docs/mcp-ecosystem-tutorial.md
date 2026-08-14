@@ -21,7 +21,7 @@ npm install -g autoace-cli@latest
 npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
 ```
 
-MCP 名称建议 `autoace`，env 填 App 复制的 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`。按当前客户端格式写入配置即可。配对码不进仓库。无 USB 自动发现。
+MCP 名称建议 `autoace`。env 可填 App 复制的 `KUAIYOU_DEVICE_IP`（含端口）与 `KUAIYOU_MCP_PAIRING_CODE`，也可留空后把「复制给 Agent」交给 `pair_device`（成功后写入本机配置）。配对码不进仓库。无 USB 自动发现。
 
 端口/配对码每次开启 MCP 会变。会话缺工具但 CLI `tools/list` 已有 → 新开对话。
 

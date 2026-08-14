@@ -36,6 +36,7 @@ import {
   httpPostForm,
   isDeviceUnreachable,
   markDeviceDisconnected,
+  persistPairedDevice,
   resolveDeviceBaseUrl,
   setSessionDeviceOverride,
   sniffImageMime,
@@ -89,8 +90,8 @@ function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
         type: "text",
         text:
           `${toolName} needs a device address.\n` +
-          `Set KUAIYOU_DEVICE_URL to the full URL, or KUAIYOU_DEVICE_IP to the "ip:port" shown by the App under ` +
-          `设置 → 高级设置 → MCP 服务, and KUAIYOU_MCP_PAIRING_CODE to the pairing code.` +
+          `Call pair_device with the App「复制给 Agent」paste (saved on this machine after success), ` +
+          `or set KUAIYOU_DEVICE_URL / KUAIYOU_DEVICE_IP and KUAIYOU_MCP_PAIRING_CODE.` +
           (logs ? `\n\nLogs:\n${logs}` : ""),
       },
     ],
@@ -100,9 +101,9 @@ function missingDeviceIp(toolName: string, logs = ""): ToolErrorResponse {
 
 const DEVICE_DISCONNECTED_USER_MESSAGE =
   "设备已断开或地址已失效，需要重新配对。请到 App 设置 → MCP 服务 重新复制「复制给 Agent」，再调用 pair_device（connectionInfo 全文）。" +
-  "同步改 mcp.json 的 KUAIYOU_DEVICE_IP（host:port，不要带 http://）和 KUAIYOU_MCP_PAIRING_CODE，然后重载 MCP，否则下次冷启动仍打旧地址。\n" +
-  "The configured device is disconnected or its address is stale. Re-pair: re-copy「复制给 Agent」from the App, call pair_device with the full connectionInfo, " +
-  "update mcp.json KUAIYOU_DEVICE_IP (host:port, no http://) and KUAIYOU_MCP_PAIRING_CODE, then reload MCP.";
+  "成功后会覆盖本机保存的地址与配对码，无需改 mcp.json，也无需仅为换地址而重载 MCP。\n" +
+  "The configured device is disconnected or its address is stale. Re-pair: re-copy「复制给 Agent」from the App and call pair_device with the full connectionInfo. " +
+  "A successful pair overwrites the machine-local saved target; you do not need to edit mcp.json or reload MCP just to change the address.";
 
 function deviceDisconnectedFailure(logs: string): ToolErrorResponse {
   return {
@@ -270,7 +271,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "pair_device",
         description:
-          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing from the user's connection paste (地址/配对码/设备画像) plus pair success and a CLI capability list. Pass connectionInfo whenever the user pasted App copy text. When connectionInfo (or structured host/port/code) is present, those values override process env for this MCP session — no restart required. Present the briefing to the user before taking skill/plan instructions.",
+          "Pair with the App MCP service (POST /api/mcp/pair), then synthesize a user-facing briefing. Pass connectionInfo whenever the user pasted App copy text. Address/code from this call override env for this process and are saved under the user config dir (default ~/.config/autoace/device.json) so the next cold start does not need mcp.json edits. Present the briefing to the user before taking skill/plan instructions.",
         inputSchema: {
           type: "object",
           properties: {
@@ -728,6 +729,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ? "paired=compat (HTTP 404 /pair)\n"
           : `paired=true bodyBytes=${paired.body.length}\n`;
         const ack = parsePairAck(paired.body);
+        const persistResult = persistPairedDevice({
+          baseUrl,
+          pairingCode:
+            connection.pairingCode ||
+            process.env.KUAIYOU_MCP_PAIRING_CODE ||
+            process.env.KUAIYOU_MCP_TOKEN,
+        });
+        if (persistResult.ok) {
+          logs += `persisted=${persistResult.path}\n`;
+        } else {
+          logs += `persistFailed=${persistResult.error}\n`;
+        }
         return {
           content: [
             {
@@ -739,6 +752,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 logs,
                 legacyNoPairRoute: paired.legacyNoPairRoute,
                 sessionOverrideApplied,
+                persistResult,
               }),
             },
           ],

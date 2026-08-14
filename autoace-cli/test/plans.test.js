@@ -3,7 +3,11 @@ const assert = require("node:assert/strict");
 const { Client } = require("@modelcontextprotocol/sdk/client/index.js");
 const { StdioClientTransport } = require("@modelcontextprotocol/sdk/client/stdio.js");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 const http = require("node:http");
+
+process.env.KUAIYOU_CONFIG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "autoace-cfg-"));
 
 const SERVER_ENTRY = path.join(__dirname, "..", "build", "index.js");
 
