@@ -49,8 +49,8 @@
 | --- | --- |
 | **[autoace-cli](./autoace-cli/)** | 电脑端 MCP CLI（npm 包名 `autoace-cli`）。 |
 | **[docs](./docs/)** | 编写与联调手册；完整接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md)。 |
-| **[examples](./examples/)** | 技能示例 JSON。 |
-| **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。 |
+| **[examples](./examples/)** | 技能示例 JSON（打开应用、关弹窗、签到）。 |
+| **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。引擎回归夹具在 `autoace-cli/fixtures/device/`。 |
 | **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**：`npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y`；CLI：`npm install -g autoace-cli@latest`。 |
 | **[开源官网 (Website)](https://kuaiyou-app.github.io/)** | 独立开源官网（源码位于 [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。 |
 

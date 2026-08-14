@@ -19,7 +19,7 @@ Why did you create this skill? (为什么要创建这个技能？解决了什么
 - Phone Resolution/Density (手机分辨率/DPI, if known): [e.g. 1080x2400]
 
 **The JSON Script (技能 JSON 内容)**
-Please paste the complete skill JSON here (or link to a Gist). Do not paste or commit a Schema copy. (请粘贴完整技能 JSON；不要附带或提交 Schema 副本)
+Please paste the complete skill JSON here (or link to a Gist). Do not paste or commit a Schema copy. Engine regression / `test_*` / infinite swipe skills belong in `autoace-cli/fixtures/device/`, not the public `skills/` catalog. (请粘贴完整技能 JSON；不要附带或提交 Schema 副本。引擎测试与无限刷视频不要提交到社区目录。)
 
 ```json
 PASTE THE SKILL JSON VALIDATED BY THE CURRENT APP HERE
