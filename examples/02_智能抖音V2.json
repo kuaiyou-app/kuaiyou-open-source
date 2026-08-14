@@ -1,7 +1,7 @@
 {
   "id": "tiktok_smart_browser_v2",
   "name": "抖音智能化刷视频与互动",
-  "description": "V2新特性演示：全局弹窗拦截、语义识别、向外求助、相对滑动",
+  "description": "V2 特性演示：全局弹窗拦截、语义识别、相对滑动",
   "launchApp": {
     "type": "launchApp",
     "packageName": "com.ss.android.ugc.aweme",

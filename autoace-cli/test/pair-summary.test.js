@@ -68,6 +68,7 @@ test("formatPairSuccessMessage combines user paste context with pair success and
   assert.match(text, /Android 14/);
   assert.match(text, /1080x2400/);
   assert.match(text, /App：2\.9\.0/);
+  assert.match(text, /observe_screen/);
   assert.match(text, /capture_screenshot/);
   assert.match(text, /plans_deploy/);
   assert.doesNotMatch(text, /IGNORE/);

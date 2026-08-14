@@ -190,8 +190,9 @@ export function formatCliCapabilities(): string {
   return [
     "当前 autoace-cli 可用能力：",
     "屏幕与调试：",
-    "- capture_screenshot — 截取当前屏幕",
-    "- get_ui_tree — 获取当前 UI 节点树",
+    "- observe_screen — 截屏 + 可交互节点摘要（写选择器时优先用这个）",
+    "- capture_screenshot — 仅截取当前屏幕",
+    "- get_ui_tree — 完整 UI 节点树（体积大，仅在摘要不够时用）",
     "技能（自动化 JSON）：",
     "- get_kuaiyou_schema — 拉取设备权威技能 Schema",
     "- get_kuaiyou_prompts — 拉取设备权威技能/计划生成规则（勿写入仓库）",

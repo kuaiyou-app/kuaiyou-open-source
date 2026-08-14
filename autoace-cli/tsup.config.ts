@@ -8,6 +8,7 @@ export default defineConfig({
     'src/contract-schema-validator.ts',
     'src/skill-lint.ts',
     'src/plan-lint.ts',
+    'src/observe.ts',
     'src/pair-summary.ts',
   ],
   format: ['cjs', 'esm'],

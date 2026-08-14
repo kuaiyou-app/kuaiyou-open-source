@@ -1,7 +1,7 @@
 ---
 name: autoace
 description: >-
-  用 autoace-cli（MCP）连接快游大师：截屏/UI 树、编写校验推送 Android 自动化技能 JSON、
+  用 autoace-cli（MCP）连接快游大师：看屏（observe_screen）、编写校验推送 Android 自动化技能 JSON、
   以及领域教练 LearningPlan。在用户提到快游、MCP 配对、技能推送、领域教练/学习计划，
   或要操作手机屏幕时使用。
 ---
@@ -46,6 +46,7 @@ description: >-
 3. 有 `pair_device` → Session start；无则用其他工具静默配对并请补贴「复制给 Agent」全文
 4. 无 `get_kuaiyou_prompts` → 不做技能/计划生成（可仍看屏、跑已有技能）；勿用仓库 / craft.md 当权威提示词
 5. 无 `plans_*` → 不做计划，勿编造 schema
+6. 无 `observe_screen` → 用 `capture_screenshot` + `get_ui_tree`；有则不要默认拉完整树
 
 ### 目录有工具 ≠ 通道可用
 
@@ -79,8 +80,9 @@ Cursor MCP 面板显示 ready / 工具列表可见，**不等于** stdio 通道�
 
 1. `get_kuaiyou_prompts` + `get_kuaiyou_schema`。缺 prompts（404）→ **停**，请用户升级 App；禁止用本仓库 / craft.md 当权威提示词。
 2. 用返回的 `skill.template` 填 `{{userRequirement}}` 作为生成规则。执行 `skill.agentMust`（先契约、能看屏则看屏、产出完整技能 JSON、validate 再 push）。**不要**执行 `clipboardMust`（那是手机剪贴板外壳）。**忽略未知字段**；禁止把 prompts 正文写入仓库或当缓存。
-3. `validate_kuaiyou_skill` → `push_reactive_skill`（须手机确认）。
-4. 点偏：`run_skill` / `get_execution_log` / UI 对照后改 JSON 再推。
+3. 看屏优先 `observe_screen`；无此工具则 `capture_screenshot` + `get_ui_tree`。不要默认拉取完整 UI 树。
+4. `validate_kuaiyou_skill` → `push_reactive_skill`（`skillJson` 可以是 JSON 字符串或 `.json` 文件路径，与 validate 相同；须手机确认）。
+5. 点偏：`run_skill` / `get_execution_log` / 再 `observe_screen` 对照后改 JSON 再推。
 
 禁止：`agentId`、`readText`、`setClipboard`、`askAgent`。
 

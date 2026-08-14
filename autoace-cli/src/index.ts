@@ -22,6 +22,7 @@ import {
   PLAN_SCHEMA_PATH,
   SKILL_SCHEMA_PATH,
 } from "./device-schema.js";
+import { enhanceUiNodes, formatObserveSummary, summarizeScreenTree } from "./observe.js";
 import {
   DeviceDisconnectedError,
   HttpStatusError,
@@ -309,7 +310,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             skillJson: {
               type: "string",
-              description: "The JSON content or absolute .json file path to validate.",
+              description: "Skill JSON content, or an absolute / relative .json file path.",
             },
           },
           required: ["skillJson"],
@@ -318,7 +319,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "push_reactive_skill",
         description:
-          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel.",
+          "Fetch the App schema, validate, then deploy a skill JSON over the LAN HTTP channel. skillJson accepts the same JSON string or .json file path as validate_kuaiyou_skill.",
         inputSchema: {
           type: "object",
           properties: {
@@ -328,16 +329,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             skillJson: {
               type: "string",
-              description: "The JSON content to deploy.",
+              description: "Skill JSON content, or an absolute / relative .json file path (same as validate_kuaiyou_skill).",
             },
           },
           required: ["skillId", "skillJson"],
         },
       },
       {
+        name: "observe_screen",
+        description:
+          "Preferred look-at-the-phone tool: screenshot plus a compact list of interactive nodes (text/id/bounds/centerPct) and current package. Use this before writing selectors. Fall back to get_ui_tree only when you need the full dump.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "get_ui_tree",
         description:
-          "Fetch the current UI node tree from the device over the LAN HTTP channel (requires App /api/mcp/ui_tree).",
+          "Full UI node tree from GET /api/mcp/ui_tree. Prefer observe_screen for authoring; this dump is large and may include sensitive on-screen text.",
         inputSchema: {
           type: "object",
           properties: {},
@@ -346,7 +353,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "capture_screenshot",
         description:
-          "Fetch the current screen screenshot from the device over the LAN HTTP channel (requires App /api/mcp/screenshot).",
+          "Fetch the current screen screenshot only. Prefer observe_screen when authoring skills (screenshot + interactive nodes together).",
         inputSchema: {
           type: "object",
           properties: {},
@@ -485,45 +492,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     ],
   };
 });
-
-function parseBoundsStr(boundsStr: string) {
-  const match = boundsStr.match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
-  if (match) {
-    const left = parseInt(match[1], 10);
-    const top = parseInt(match[2], 10);
-    const right = parseInt(match[3], 10);
-    const bottom = parseInt(match[4], 10);
-    return {
-      left,
-      top,
-      right,
-      bottom,
-      width: right - left,
-      height: bottom - top,
-      centerX: Math.floor((left + right) / 2),
-      centerY: Math.floor((top + bottom) / 2),
-    };
-  }
-  return boundsStr;
-}
-
-function enhanceUiNodes(data: any): any {
-  if (Array.isArray(data)) {
-    return data.map(enhanceUiNodes);
-  } else if (data !== null && typeof data === "object") {
-    const newData: any = {};
-    for (const key in data) {
-      if (key === "bounds" && typeof data[key] === "string") {
-        newData[key] = parseBoundsStr(data[key]);
-      } else {
-        newData[key] = enhanceUiNodes(data[key]);
-      }
-    }
-    return newData;
-  }
-  return data;
-}
-
 
 async function resolveJsonFileOrContent(input: string, paramName: string): Promise<string> {
   // Only treat as a file path when it looks like one and ends with .json.
@@ -824,7 +792,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
-      const parsed = validateSkillPayload(skillJson);
+      const content = await resolveSkillJsonInput(skillJson);
+      const parsed = validateSkillPayload(content);
       if (parsed.parsed === null || parsed.errors.length > 0) {
         return {
           content: [{ type: "text", text: `Refusing to deploy — ${formatLintResult(parsed)}` }],
@@ -844,7 +813,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       let processedObj: any =
-        lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(skillJson);
+        lint.parsed && typeof lint.parsed === "object" ? structuredClone(lint.parsed) : JSON.parse(content);
       delete processedObj.agentId;
       if (processedObj.id !== skillId) {
         throw new McpError(
@@ -898,6 +867,75 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         return deviceHttpFailure("deploy the skill", logs);
       });
+    }
+
+    case "observe_screen": {
+      let logs = "";
+      const baseUrl = getDeviceBaseUrl();
+      if (!baseUrl) return missingDeviceIp("observe_screen", logs);
+
+      logs += `GET ${baseUrl}/api/mcp/ui_tree and /api/mcp/screenshot\n`;
+      try {
+        await ensureDeviceReachable(baseUrl);
+        await ensureDevicePaired(baseUrl);
+        const [treeResult, shotResult] = await Promise.allSettled([
+          httpGetText(`${baseUrl}/api/mcp/ui_tree`),
+          httpGetBuffer(`${baseUrl}/api/mcp/screenshot`),
+        ]);
+
+        if (treeResult.status === "rejected") {
+          const err = treeResult.reason;
+          logs += `ui_tree failed: ${err instanceof Error ? err.message : String(err)}\n`;
+          if (err instanceof DeviceDisconnectedError || isDeviceUnreachable(err)) {
+            return noteUnreachableAndFail(err, logs);
+          }
+          if (err instanceof HttpStatusError) {
+            return deviceRejected("observe the screen", err.status, "", logs);
+          }
+          return deviceHttpFailure("observe the screen", logs);
+        }
+
+        let screenshotNote: string | undefined;
+        if (shotResult.status === "rejected") {
+          const detail =
+            shotResult.reason instanceof Error ? shotResult.reason.message : String(shotResult.reason);
+          logs += `screenshot failed: ${detail}\n`;
+          screenshotNote = `Screenshot unavailable (${detail}). Interactive nodes are still listed below.`;
+        }
+
+        let summaryText: string;
+        try {
+          summaryText = formatObserveSummary(summarizeScreenTree(JSON.parse(treeResult.value)), screenshotNote);
+        } catch {
+          summaryText =
+            (screenshotNote ? `${screenshotNote}\n` : "") +
+            "Screen observation: UI tree was not valid JSON; raw payload follows.\n\n" +
+            treeResult.value.slice(0, 8000);
+        }
+
+        const content: Array<
+          { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+        > = [];
+        if (shotResult.status === "fulfilled") {
+          content.push({
+            type: "image",
+            data: shotResult.value.toString("base64"),
+            mimeType: sniffImageMime(shotResult.value),
+          });
+        }
+        content.push({ type: "text", text: summaryText + `\n\nLogs:\n${logs}` });
+        return { content };
+      } catch (e: any) {
+        logs += `HTTP fetch failed: ${e.message}\n`;
+        if (e instanceof DeviceDisconnectedError || isDeviceUnreachable(e)) {
+          return noteUnreachableAndFail(e, logs);
+        }
+        if (e instanceof HttpStatusError) {
+          return deviceRejected("observe the screen", e.status, "", logs);
+        }
+      }
+
+      return deviceHttpFailure("observe the screen", logs);
     }
 
     case "get_ui_tree": {

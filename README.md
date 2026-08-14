@@ -39,7 +39,7 @@
 - **语义点击**：通过 `semantic`（如「去签到」）结合无障碍树定位，减少绝对坐标依赖。
 - **百分比坐标与相对滑动**：适配不同分辨率；可在指定面板内相对滑动。
 - **本地执行**：动作在设备本地闭环（`tap` / `swipe` / `launchApp` / `delay` 等）；读写请用 `storeValue`，勿用已移除的 `readText` / `setClipboard`。
-- **MCP 联调**：`autoace-cli` 供 AI 看屏、从客户端读取实时契约、校验并下发技能。
+- **MCP 联调**：`autoace-cli` 供 AI 看屏（优先 `observe_screen`）、从客户端读取实时契约、校验并下发技能。
 
 ---
 

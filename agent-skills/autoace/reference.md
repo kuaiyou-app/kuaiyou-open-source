@@ -19,15 +19,16 @@
 
 | Tool | 作用 |
 | --- | --- |
-| `capture_screenshot` | 当前屏幕截图 |
-| `get_ui_tree` | 当前 UI 节点树 |
+| `observe_screen` | **优先**：截屏 + 可交互节点摘要（text/id/bounds/centerPct）+ 当前包名 |
+| `capture_screenshot` | 仅当前屏幕截图 |
+| `get_ui_tree` | 完整 UI 节点树（体积大，可能含敏感文案；摘要不够时再用） |
 
 ### Skills lifecycle
 
 | Tool | 作用 |
 | --- | --- |
 | `validate_kuaiyou_skill` | 拉契约 + 校验 + 业务 lint |
-| `push_reactive_skill` | 校验后部署；成功多为 `pendingConfirm`，须手机确认 |
+| `push_reactive_skill` | 校验后部署；`skillJson` 与 validate 一样可以是 JSON 或 `.json` 路径；成功多为 `pendingConfirm`，须手机确认 |
 | `list_skills` | 列出设备上已装技能 |
 | `delete_skill` | 按 id 删除 |
 | `run_skill` | 开始执行 |
