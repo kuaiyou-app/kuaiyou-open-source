@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## [1.0.11] - 2026-08-15
+
 ### Added
 
 - MCP 工具 `observe_screen`：一次返回截屏 + 可交互节点摘要（文案 / id / bounds / centerPct）和当前包名。写选择器时优先用它，而不是完整 `get_ui_tree`。
