@@ -9,7 +9,7 @@
 推荐流程：
 
 1. 开启快游大师 MCP 服务，调用 `get_kuaiyou_schema` 获取实时契约。
-2. 调用 `get_ui_tree`，必要时结合 `capture_screenshot`，确认当前页面上与签到、领取相关的可交互元素。
+2. 调用 `observe_screen`（截屏 + 可交互节点摘要）确认当前页面上与签到、领取相关的可交互元素。完整树仅在摘要不够时再用 `get_ui_tree`。
 3. Agent 根据实时契约生成技能，优先使用稳定的文本、资源 ID 或语义选择方式，避免依赖绝对屏幕坐标。
 4. 调用 `validate_kuaiyou_skill`。CLI 会重新获取客户端契约并返回具体校验错误。
 5. 校验通过后调用 `push_reactive_skill`；在手机端审阅并确认导入。
@@ -22,10 +22,9 @@
 
 推荐流程：
 
-1. 调用 `capture_screenshot` 获取当前题目画面，由 Agent 分析候选答案。
-2. 调用 `get_ui_tree` 确认候选项对应的可定位元素。
-3. 调用 `get_kuaiyou_schema`，按当前客户端支持的动作和选择器生成临时技能。
-4. 使用 `validate_kuaiyou_skill` 校验后再推送，手机端确认内容无误后执行。
+1. 调用 `observe_screen` 获取当前题目画面与可点击候选项；摘要不够时再 `get_ui_tree`。
+2. 调用 `get_kuaiyou_schema`，按当前客户端支持的动作和选择器生成临时技能。
+3. 使用 `validate_kuaiyou_skill` 校验后再推送，手机端确认内容无误后执行。
 
 截图和节点树可能包含敏感信息。只在可信环境中处理，不要把配对码、截图或页面文本提交到仓库。
 

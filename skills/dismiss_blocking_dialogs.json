@@ -1,0 +1,61 @@
+{
+  "id": "dismiss_blocking_dialogs",
+  "name": "关闭更新与确认弹窗",
+  "description": "拦截版本更新、青少年模式等打断主流程的弹窗；若出现「确认」按钮则点击，最多 3 次。请先打开目标 App，文案不同时用 observe_screen 改选择器。",
+  "interrupts": [
+    {
+      "name": "青少年模式弹窗",
+      "when": {
+        "type": "semantic",
+        "description": "青少年模式弹窗提醒"
+      },
+      "dismiss": {
+        "type": "semantic",
+        "description": "我知道了按钮或关闭弹窗的叉号"
+      },
+      "priority": 10
+    },
+    {
+      "name": "版本更新提示",
+      "when": {
+        "type": "semantic",
+        "description": "发现新版本或立即升级提示框"
+      },
+      "dismiss": {
+        "type": "semantic",
+        "description": "以后再说或暂不更新按钮"
+      },
+      "priority": 9
+    }
+  ],
+  "goals": [
+    {
+      "id": "click_confirm",
+      "name": "点击确认按钮",
+      "priority": 5,
+      "trigger": {
+        "type": "elementVisible",
+        "target": { "type": "text", "text": "确认" }
+      },
+      "action": {
+        "type": "tap",
+        "target": { "type": "text", "text": "确认" },
+        "timeoutMs": 2000,
+        "delayMs": 200
+      },
+      "constraints": {
+        "maxExecutions": 3,
+        "cooldownMs": 2000,
+        "continueOnFailure": true,
+        "enabled": true
+      }
+    }
+  ],
+  "termination": { "type": "timeout", "maxDurationMs": 30000 },
+  "pacingPreset": "FAST",
+  "scanConfig": {
+    "idleIntervalMs": 300,
+    "activeIntervalMs": 150,
+    "fallbackToImageMatch": false
+  }
+}

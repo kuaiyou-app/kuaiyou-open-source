@@ -30,7 +30,7 @@
 
 本仓库的安全边界主要包括：
 
-- **MCP CLI（`autoace-cli/`，包名 `autoace-cli`）**：在本机以用户权限运行，通过局域网 HTTP 或 ADB 与 Android 设备通信。命令注入、路径穿越、不安全的临时文件处理等属于重点防护面。
+- **MCP CLI（`autoace-cli/`，包名 `autoace-cli`）**：在本机以用户权限运行，通过局域网 HTTP（或 `KUAIYOU_DEVICE_URL` 的 HTTPS）与 Android 设备通信。命令注入、路径穿越、不安全的临时文件处理、明文传输截屏/UI 树等属于重点防护面。当前默认通道是局域网 HTTP，请仅在可信、隔离的网络使用。`pair_device` 成功后会把地址与配对码写入本机配置文件（默认 `~/.config/autoace/device.json`，权限 600）；该文件含密钥，勿复制到仓库或共享目录。
 - **技能 JSON（`skills/`）**：技能由用户自行审阅后导入手机执行。CLI 每次校验和推送都会使用当前 App 通过 `GET /api/mcp/schema` 提供的实时契约，端点不可用时不会回退到仓库副本；但**技能内容的语义安全性仍由使用者负责**——请勿导入来源不明的技能。
 
-以下不在本仓库安全范围内：快游大师 Android 闭源客户端本身的问题（请通过应用内渠道反馈）、开源官网（见 `kuaiyou-website`）、用户本机环境（ADB、Node.js）的固有风险。
+以下不在本仓库安全范围内：快游大师 Android 闭源客户端本身的问题（请通过应用内渠道反馈）、开源官网（见 `kuaiyou-website`）、用户本机环境（Node.js、局域网）的固有风险。

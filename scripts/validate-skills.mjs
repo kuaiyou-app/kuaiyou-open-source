@@ -1,4 +1,5 @@
-// Performs offline JSON and business-lint checks for repository examples.
+// Performs offline JSON and business-lint checks for repository examples,
+// the public skills catalog, and device fixtures.
 // Client contract validation happens through GET /api/mcp/schema at runtime.
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -11,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const skillsDir = join(repoRoot, "skills");
 const examplesDir = join(repoRoot, "examples");
+const fixturesDir = join(repoRoot, "autoace-cli", "fixtures", "device");
 
 const lintModulePath = join(repoRoot, "autoace-cli", "build", "skill-lint.mjs");
 if (!existsSync(lintModulePath)) {
@@ -34,7 +36,11 @@ function collectJsonFiles(dir) {
 let failed = false;
 const ids = new Set();
 
-for (const filePath of [...collectJsonFiles(skillsDir), ...collectJsonFiles(examplesDir)]) {
+for (const filePath of [
+  ...collectJsonFiles(skillsDir),
+  ...collectJsonFiles(examplesDir),
+  ...collectJsonFiles(fixturesDir),
+]) {
   const rel = filePath.slice(repoRoot.length + 1);
   let data;
   try {
@@ -60,7 +66,7 @@ for (const filePath of [...collectJsonFiles(skillsDir), ...collectJsonFiles(exam
   }
 
   if (lint.ok) {
-    if (filePath.startsWith(skillsDir)) {
+    if (filePath.startsWith(skillsDir + "/") || filePath === skillsDir) {
       if (ids.has(data.id)) {
         console.error(`✗ ${rel}: duplicate id "${data.id}"`);
         failed = true;

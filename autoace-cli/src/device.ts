@@ -1,3 +1,13 @@
+import { readPersistedDevice } from "./device-config.js";
+
+export {
+  clearPersistedDevice,
+  getDeviceConfigPath,
+  persistPairedDevice,
+  readPersistedDevice,
+  resetDeviceConfigCache,
+} from "./device-config.js";
+
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
 const DEFAULT_TEXT_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024;
 const DEFAULT_IMAGE_RESPONSE_LIMIT_BYTES = 12 * 1024 * 1024;
@@ -31,13 +41,129 @@ export class ResponseTooLargeError extends Error {
 }
 
 /**
+ * Current KUAIYOU_DEVICE_IP / session override cannot be reached (timeout,
+ * ECONNREFUSED, or GET /api/mcp/health never answered). Not for HTTP 401/404.
+ */
+export class DeviceDisconnectedError extends Error {
+  readonly endpoint: string;
+  constructor(endpoint: string, cause?: unknown) {
+    const detail = cause instanceof Error ? cause.message : cause ? String(cause) : "";
+    super(
+      `Device disconnected or address is stale (${endpoint})${detail ? `: ${detail}` : ""}`
+    );
+    this.name = "DeviceDisconnectedError";
+    this.endpoint = endpoint;
+    if (cause instanceof Error) {
+      this.cause = cause;
+    }
+  }
+}
+
+const UNREACHABLE_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+/** True for timeout / connection-refused / DNS — not for HTTP 401/404/429. */
+export function isDeviceUnreachable(error: unknown): boolean {
+  if (error instanceof DeviceDisconnectedError) return true;
+  if (error instanceof TimeoutError) return true;
+  if (error instanceof HttpStatusError) return false;
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const rec = current as { code?: unknown; cause?: unknown; name?: unknown; message?: unknown };
+    if (typeof rec.code === "string" && UNREACHABLE_CODES.has(rec.code)) return true;
+    const message = typeof rec.message === "string" ? rec.message : "";
+    if (rec.name === "TypeError" && /fetch failed|network/i.test(message)) return true;
+    current = rec.cause;
+  }
+  return false;
+}
+
+/**
+ * In-process session overrides from pair_device.connectionInfo (or structured
+ * host/port/code). Takes precedence over mcp.json env for this MCP process so
+ * Agents can retarget without waiting for a Cursor MCP reload.
+ */
+export type SessionDeviceOverride = {
+  baseUrl?: string;
+  pairingCode?: string;
+};
+
+let sessionOverride: SessionDeviceOverride = {};
+
+export function getSessionDeviceOverride(): SessionDeviceOverride {
+  return { ...sessionOverride };
+}
+
+export function setSessionDeviceOverride(partial: SessionDeviceOverride): void {
+  const next: SessionDeviceOverride = { ...sessionOverride };
+  if (partial.baseUrl !== undefined) {
+    const trimmed = partial.baseUrl.trim().replace(/\/+$/, "");
+    next.baseUrl = trimmed || undefined;
+  }
+  if (partial.pairingCode !== undefined) {
+    const code = partial.pairingCode.trim();
+    next.pairingCode = code || undefined;
+  }
+  sessionOverride = next;
+  // Endpoint or code change invalidates the cached pair handshake.
+  clearDevicePairingSession();
+}
+
+export function clearSessionDeviceOverride(): void {
+  sessionOverride = {};
+  clearDevicePairingSession();
+}
+
+/**
+ * Turn App paste `host:port` (or a full http(s) URL) into a base URL for fetch.
+ */
+export function addressToBaseUrl(address: string): string {
+  const trimmed = address.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    throw new Error("device address must not be empty");
+  }
+  if (trimmed.includes("://")) {
+    return resolveDeviceBaseUrlFromEnv({ KUAIYOU_DEVICE_URL: trimmed })!;
+  }
+  return resolveDeviceBaseUrlFromEnv({ KUAIYOU_DEVICE_IP: trimmed })!;
+}
+
+/**
  * Resolve the device endpoint once, with an explicit URL taking precedence.
  * KUAIYOU_DEVICE_IP remains an HTTP compatibility path for current App builds;
  * KUAIYOU_DEVICE_URL lets a future TLS-capable App provide an https:// endpoint.
+ *
+ * When a session override baseUrl is set (from connectionInfo), it wins over the
+ * last successful pair_device record and over mcp.json env, so retargeting does
+ * not require restarting the MCP process. Persisted config wins over env so a
+ * later pair survives Cursor cold start without editing mcp.json.
  */
 export function resolveDeviceBaseUrl(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
+  if (sessionOverride.baseUrl) {
+    return sessionOverride.baseUrl;
+  }
+  const persisted = readPersistedDevice();
+  if (persisted?.baseUrl) {
+    return persisted.baseUrl;
+  }
+  return resolveDeviceBaseUrlFromEnv(env);
+}
+
+function resolveDeviceBaseUrlFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   const explicitUrl = env.KUAIYOU_DEVICE_URL?.trim();
   if (explicitUrl) {
     let parsed: URL;
@@ -67,37 +193,95 @@ export function resolveDeviceBaseUrl(
   return `http://${deviceIp}${hasPort ? "" : ":8080"}`;
 }
 
-function authHeaders(): Record<string, string> {
+function resolvePairingCode(env: NodeJS.ProcessEnv = process.env): string {
+  if (sessionOverride.pairingCode) return sessionOverride.pairingCode;
+  const persisted = readPersistedDevice();
+  if (persisted?.pairingCode) return persisted.pairingCode;
   // Prefer short pairing code; keep KUAIYOU_MCP_TOKEN as a compatibility alias.
-  const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN;
+  return env.KUAIYOU_MCP_PAIRING_CODE || env.KUAIYOU_MCP_TOKEN || "";
+}
+
+function authHeaders(): Record<string, string> {
+  const code = resolvePairingCode();
   return code ? { Authorization: `Bearer ${code}` } : {};
 }
 
 /** Once per process+endpoint+code; drives App settings「已配对」via POST /api/mcp/pair. */
 let pairedSessionKey: string | undefined;
+/** Last successful pair body for the current session (device context). */
+let lastPairBody: string | undefined;
+
+const HEALTH_PATH = "/api/mcp/health";
+/** Skip a repeat health probe for the same baseUrl within this window. */
+const HEALTH_TTL_MS = 3000;
+let lastHealthOkAt = 0;
+let lastHealthBaseUrl: string | undefined;
+
+function normalizedBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function forgetDeviceHealth(): void {
+  lastHealthOkAt = 0;
+  lastHealthBaseUrl = undefined;
+}
 
 export function clearDevicePairingSession(): void {
   pairedSessionKey = undefined;
+  lastPairBody = undefined;
+  forgetDeviceHealth();
 }
+
+/**
+ * Transport died: drop the cached pair handshake and any session override so
+ * the next call does not keep hammering a stale host:port.
+ */
+export function markDeviceDisconnected(): void {
+  clearSessionDeviceOverride();
+}
+
+export type EnsurePairedResult = {
+  /** True when this call skipped HTTP because the session was already paired. */
+  reusedSession: boolean;
+  /** True when the App answered 404 for /pair (legacy builds). */
+  legacyNoPairRoute: boolean;
+  /** Raw JSON body from POST /api/mcp/pair when a request was made. */
+  body: string;
+};
 
 /**
  * Explicit device handshake. Safe to call repeatedly; no-ops after success for the
  * same baseUrl+pairing code. Older Apps without /pair (HTTP 404) are treated as
  * already paired so tooling keeps working.
+ *
+ * Returns the pair response body (including device profile when the App provides it)
+ * so callers like pair_device can show context to the user.
  */
 export async function ensureDevicePaired(
   baseUrl: string,
   timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
-): Promise<void> {
-  const code = process.env.KUAIYOU_MCP_PAIRING_CODE || process.env.KUAIYOU_MCP_TOKEN || "";
+): Promise<EnsurePairedResult> {
+  const code = resolvePairingCode();
   const key = `${baseUrl.replace(/\/+$/, "")}|${code}`;
-  if (pairedSessionKey === key) return;
+  if (pairedSessionKey === key) {
+    return {
+      reusedSession: true,
+      legacyNoPairRoute: false,
+      body: lastPairBody ?? "",
+    };
+  }
 
   const url = `${baseUrl.replace(/\/+$/, "")}/api/mcp/pair`;
   const res = await httpPostJson(url, "{}", timeoutMs);
-  if (res.ok || res.status === 404) {
+  if (res.ok) {
     pairedSessionKey = key;
-    return;
+    lastPairBody = res.body ?? "";
+    return { reusedSession: false, legacyNoPairRoute: false, body: lastPairBody };
+  }
+  if (res.status === 404) {
+    pairedSessionKey = key;
+    lastPairBody = "";
+    return { reusedSession: false, legacyNoPairRoute: true, body: "" };
   }
   throw new HttpStatusError(res.status, res.statusText || res.body.slice(0, 200));
 }
@@ -217,6 +401,47 @@ async function withAbort<T>(timeoutMs: number, fn: (signal: AbortSignal) => Prom
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Unauthenticated GET — used only for /api/mcp/health. Non-2xx is still "device answered". */
+async function httpGetNoAuth(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number
+): Promise<{ status: number; statusText: string; body: string }> {
+  return withAbort(timeoutMs, async (signal) => {
+    const res = await fetch(url, { signal });
+    const body = await readBodyTextOrEmpty(res, maxBytes);
+    return { status: res.status, statusText: res.statusText, body };
+  });
+}
+
+/**
+ * Probe GET /api/mcp/health (no Bearer) before device GET/POST.
+ * HTTP 200 (or any HTTP status) = channel up. Timeout / ECONNREFUSED = disconnected.
+ * Short TTL avoids a probe on every tool in a burst; a later call after TTL
+ * (or after markDeviceDisconnected) will notice a restarted device / new port.
+ */
+export async function ensureDeviceReachable(
+  baseUrl: string,
+  timeoutMs = DEFAULT_HTTP_TIMEOUT_MS
+): Promise<void> {
+  const endpoint = normalizedBaseUrl(baseUrl);
+  if (lastHealthBaseUrl === endpoint && Date.now() - lastHealthOkAt < HEALTH_TTL_MS) {
+    return;
+  }
+  const url = `${endpoint}${HEALTH_PATH}`;
+  try {
+    await httpGetNoAuth(url, timeoutMs, 64 * 1024);
+    lastHealthBaseUrl = endpoint;
+    lastHealthOkAt = Date.now();
+  } catch (error) {
+    if (isDeviceUnreachable(error)) {
+      markDeviceDisconnected();
+      throw new DeviceDisconnectedError(endpoint, error);
+    }
+    throw error;
   }
 }
 

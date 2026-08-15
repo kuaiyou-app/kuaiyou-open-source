@@ -1,0 +1,49 @@
+{
+  "id": "example_dismiss_and_checkin",
+  "name": "拦截更新弹窗并点击签到",
+  "description": "演示 Interrupt 关闭版本更新，以及用文案选择器点击一次「签到」。请先打开目标页；界面不同时用 observe_screen 改选择器，不要用无限循环。",
+  "interrupts": [
+    {
+      "name": "版本更新提示",
+      "when": {
+        "type": "semantic",
+        "description": "发现新版本或立即升级提示框"
+      },
+      "dismiss": {
+        "type": "semantic",
+        "description": "以后再说或暂不更新按钮"
+      },
+      "priority": 9
+    }
+  ],
+  "goals": [
+    {
+      "id": "tap_checkin",
+      "name": "点击签到",
+      "priority": 5,
+      "trigger": {
+        "type": "elementVisible",
+        "target": { "type": "text", "text": "签到" }
+      },
+      "action": {
+        "type": "tap",
+        "target": { "type": "text", "text": "签到" },
+        "timeoutMs": 3000,
+        "delayMs": 200
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
+    }
+  ],
+  "termination": { "type": "allGoalsDone" },
+  "pacingPreset": "STANDARD",
+  "scanConfig": {
+    "idleIntervalMs": 400,
+    "activeIntervalMs": 200,
+    "fallbackToImageMatch": false
+  }
+}

@@ -1,9 +1,9 @@
-# Kuaiyou Open Source (快游大师开源生态)
+# Kuaiyou Open Source（快游大师开源生态）
 
 <div align="center">
   <img src="docs/assets/logo.png" alt="Kuaiyou Master Logo" width="120">
   <h2>The Agentic Skills</h2>
-  <p>用 AI 编写 Android 端侧自动化技能（MCP + 快游大师）</p>
+  <p>把写 Android 自动化技能这件事交给 Agent：你说需求，它看屏、校验、推到手机。</p>
   <br />
   <a href="https://github.com/kuaiyou-app/kuaiyou-open-source">
     <img src="https://img.shields.io/github/stars/kuaiyou-app/kuaiyou-open-source?style=social" alt="GitHub Repo stars" />
@@ -21,90 +21,97 @@
 
 ---
 
-欢迎来到 **快游大师 (Kuaiyou Master)** 官方开源生态仓库！
+## 亮点
 
-**本项目的核心定位是打造 "The Agentic Skills"（智能体技能生态）。**
-作为快游大师的开源中心，本仓库提供核心电脑端 CLI 工具（**autoace-cli**）、客户端实时技能契约的访问能力以及丰富的开发示例。
-配合手机端「快游大师」App，您可以直接在 Cursor、Windsurf、Claude Code 等 AI 客户端中，使用自然语言快速生成 Android 端侧自动化**技能**，完成实时校验并一键下发至手机端本地执行，开启 AI 原生自动化的全新体验。
+- 🤖 **Agent 原生** — 看屏、写技能 JSON、校验、推送、等跑完看 log，都由 Agent 调 MCP 完成。
+- ⚡ **一行安装** — `npx skills add` 装 Agent Skill，再让 Agent 配 CLI 与 MCP。
+- 📱 **手机本地执行** — 技能在快游大师里跑，不依赖云端模型一直在线；导入/运行须你在手机上确认。
+- 🌐 **适配多种 Agent** — Cursor、Claude Code、Codex 等支持 [Agent Skills](https://agentskills.io) / MCP 的客户端即可。
 
-> **说明**：
-> Android 客户端（无障碍执行引擎等）为闭源，请在应用商店搜索 **「快游大师」** 下载。
-> **开源官网**：https://kuaiyou-app.github.io/ （源码：[`kuaiyou-app/kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）
-
----
-
-## 核心能力
-
-- **弹窗拦截**：高优先级识别并关闭青少年模式、更新提示、广告等打断主流程的弹窗。
-- **语义点击**：通过 `semantic`（如「去签到」）结合无障碍树定位，减少绝对坐标依赖。
-- **百分比坐标与相对滑动**：适配不同分辨率；可在指定面板内相对滑动。
-- **本地执行**：动作在设备本地闭环（`tap` / `swipe` / `launchApp` / `delay` 等）；读写请用 `storeValue`，勿用已移除的 `readText` / `setClipboard`。
-- **MCP 联调**：`autoace-cli` 供 AI 看屏、从客户端读取实时契约、校验并下发技能。
-
----
-
-## 仓库导航
-
-| 目录/模块 | 描述 |
-| --- | --- |
-| **[autoace-cli](./autoace-cli/)** | 电脑端 MCP CLI（npm 包名 `autoace-cli`）。 |
-| **[docs](./docs/)** | 编写与联调手册；完整接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md)。 |
-| **[examples](./examples/)** | 技能示例 JSON。 |
-| **[skills](./skills/)** | 社区技能 JSON（装进 App，不是 Agent Skill）。 |
-| **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（Claude Code `/autoace`、Codex `$autoace`）。 |
-| **[开源官网 (Website)](https://kuaiyou-app.github.io/)** | 独立开源官网（源码位于 [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。 |
+Android 客户端（无障碍执行引擎）为闭源，请在应用商店搜索 **「快游大师」**。开源官网：https://kuaiyou-app.github.io/ （源码：[`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。
 
 ---
 
 ## 快速开始
 
-### 1. 准备手机端
-- 安装最新版 **「快游大师」**。
-- 打开 **设置 → 高级设置 → MCP 服务**，开启开关。
-- 副标题显示地址与遮罩配对码；需要人工查看时点眼睛图标。**点击该条目**可复制给 Agent 的完整 stdio MCP 配置。
-- *(当前仅支持局域网 HTTP 通道，手机与电脑需在同一网络。)*
+### 让 Agent 来搞定（推荐）
 
-### 2. 配置 autoace-cli
-需 **Node.js ≥ 20、npm ≥ 10**。npm 包名：**`autoace-cli`**。
+手机先装快游大师，打开 **设置 → 高级设置 → MCP 服务**。把下面整段发给 Cursor / Claude Code / Codex：
 
-把 App 复制的信息粘贴给 Agent；它会按当前客户端格式注册以下用户级或本地 MCP 服务：
+```
+帮我安装快游大师 CLI 与 Agent Skill，并配置 MCP：
+https://kuaiyou-app.github.io/autoace-cli-installation-guide.md
+```
+
+装好后**新开一条对话**，把 App「复制给 Agent」全文交给它，先 `pair_device`。成功后本机保存地址，不必为换地址改 mcp.json。
+
+### 手动安装
+
+需要 Node.js ≥ 20、npm ≥ 10。
+
+```bash
+npm install -g autoace-cli@latest
+npx -y skills add kuaiyou-app/kuaiyou-open-source --skill autoace -g -y
+```
+
+在 AI 客户端注册 stdio MCP（名称建议 `autoace`）。env 可省略，首次把「复制给 Agent」交给 `pair_device` 即可：
 
 ```text
 serverName: autoace
 transport: stdio
-command: npx
-args: ["-y", "autoace-cli"]
+command: autoace-cli
+args: []
 env:
-  KUAIYOU_DEVICE_IP: "192.168.1.100:41899"
-  KUAIYOU_MCP_PAIRING_CODE: "482917"
+  KUAIYOU_DEVICE_IP: "<DEVICE_IP:PORT>"
+  KUAIYOU_MCP_PAIRING_CODE: "<PAIRING_CODE>"
 ```
 
-不要只在普通终端前台运行 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启服务都会变化，请始终使用 App 当前复制的值。
+也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。不要只在普通终端前台跑 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启 MCP 都会变。
 
-也可全局安装：`npm install -g autoace-cli`。
+---
 
-推荐同时安装 Agent Skill **`autoace`**（见 [教程](./docs/mcp-ecosystem-tutorial.md)），在 Claude Code 用 `/autoace`，在 Codex 用 `$autoace`。
+## 能做什么
 
-连接成功后，Agent 先调用 `get_kuaiyou_schema` 读取当前 App 的权威技能契约。`validate_kuaiyou_skill` 和 `push_reactive_skill` 执行时都会再次请求 `GET /api/mcp/schema`；仓库与 npm 包不提供本地 Schema 兜底。
+告诉 Agent 你要做什么——它负责 `observe_screen` 看屏、按设备契约写技能、校验后推到手机。
 
-> 配对码通过 `Authorization: Bearer` 发送（兼容旧变量名 `KUAIYOU_MCP_TOKEN`）。
-> CLI 也支持优先级更高的 `KUAIYOU_DEVICE_URL=https://host:port`，供支持 TLS 的客户端使用。当前 HTTP 模式请仅在可信、隔离的局域网内使用。
+| 能力 | 试试这样说 |
+| --- | --- |
+| **打开应用** | 「看一下当前屏幕，写一个打开微信并等到首页出现的技能，校验后推到手机。」 |
+| **关弹窗** | 「写一个技能：出现更新/确认类弹窗就点关闭或确认，跑完把 log 给我。」 |
+| **文案签到** | 「屏幕出现『签到』时点一次就结束。先 observe_screen，再 validate 后 push，run:true 等到结束。」 |
+| **点偏了再改** | 「没点中。用刚才的 log 和截屏改选择器，再推一版。」 |
 
-### 3. 向 AI 下达指令
-> 「请先读取当前客户端技能契约，再查看我现在的手机界面，写一个点击『去签到』的技能，并校验后推送到手机上运行。」
+默认主路径：`pair_device` → `observe_screen` → `get_kuaiyou_prompts` + `get_kuaiyou_schema` → `validate_kuaiyou_skill` → `push_reactive_skill`（可 `run: true` 等到结束；失败带截屏）。完整工具表见 Agent Skill [reference.md](./agent-skills/autoace/reference.md)。领域教练 `plans_*` 仅在你明确要求学习计划时使用。
 
-手机会弹出导入确认；确认后本地执行。
+禁止：`readText` / `setClipboard` / `askAgent`；读写用 `storeValue`。契约只认当前连接的 App，不要把仓库 JSON 当 Schema。
+
+---
+
+## 仓库里有什么
+
+| 目录 | 是什么 |
+| --- | --- |
+| **[autoace-cli](./autoace-cli/)** | 电脑端 MCP CLI（npm：`autoace-cli`） |
+| **[agent-skills/autoace](./agent-skills/autoace/)** | Agent Skill **`autoace`**（给 Cursor/Claude 的流程说明） |
+| **[skills](./skills/)** | 可导入 App 的社区技能 JSON（打开微信/支付宝、关弹窗、文案签到） |
+| **[examples](./examples/)** | 写法示例，不是契约 |
+| **[docs](./docs/)** | 人读手册；接入见 [mcp-ecosystem-tutorial.md](./docs/mcp-ecosystem-tutorial.md) |
+
+引擎回归夹具在 `autoace-cli/fixtures/device/`，不要当社区示范抄。
 
 ---
 
 ## 参与贡献
 
-- Bug / 建议：[GitHub Issues](https://github.com/kuaiyou-app/kuaiyou-open-source/issues)
-- 官网相关：[`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website/issues)
-- 贡献流程：[CONTRIBUTING.md](./CONTRIBUTING.md)
+- **反馈 Bug** — [提 Issue](https://github.com/kuaiyou-app/kuaiyou-open-source/issues) 并附上复现步骤。
+- **提需求** — 对新技能或 MCP 能力有想法，欢迎 Feature Request。
+- **提交 PR** — 社区技能请按 [CONTRIBUTING.md](./CONTRIBUTING.md)；不要提交头条回归 / 无限刷视频。
+- **官网** — [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)
 
 ---
 
-## 开源协议
+> **免责声明** — 技能会在你的手机上点击、滑动、打开应用。导入和运行都须你在 App 里确认。当前局域网通道多为 HTTP，请只在可信隔离网络使用；配对码和屏幕内容不要写入仓库。AI 生成的选择器在界面改版后会失效，请用 `observe_screen` 对着当前屏幕改。本项目按 Apache-2.0 提供，不保证可用性。
 
-Apache License 2.0。
+## 许可证
+
+[Apache 2.0](./LICENSE)

@@ -1,0 +1,58 @@
+{
+  "id": "open_wechat_home",
+  "name": "打开微信并等待首页",
+  "description": "启动微信，等到屏幕出现「微信」文案后播报完成。界面改版后请用 observe_screen 对着当前屏幕改选择器。",
+  "goals": [
+    {
+      "id": "launch_wechat",
+      "name": "启动微信",
+      "priority": 10,
+      "trigger": { "type": "immediate" },
+      "action": {
+        "type": "launchApp",
+        "packageName": "com.tencent.mm",
+        "appName": "微信",
+        "delayMs": 500,
+        "timeoutMs": 8000
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": false,
+        "enabled": true
+      }
+    },
+    {
+      "id": "wait_home",
+      "name": "等待微信首页",
+      "priority": 5,
+      "trigger": {
+        "type": "allOf",
+        "triggers": [
+          { "type": "afterGoal", "goalId": "launch_wechat" },
+          { "type": "elementVisible", "target": { "type": "text", "text": "微信" } }
+        ]
+      },
+      "action": {
+        "type": "notify",
+        "message": "微信已打开，首页已出现",
+        "speakVoice": true,
+        "delayMs": 0
+      },
+      "constraints": {
+        "maxExecutions": 1,
+        "cooldownMs": 0,
+        "continueOnFailure": true,
+        "enabled": true
+      }
+    }
+  ],
+  "termination": { "type": "allGoalsDone" },
+  "pacingPreset": "STANDARD",
+  "scanConfig": {
+    "idleIntervalMs": 500,
+    "activeIntervalMs": 200,
+    "fallbackToImageMatch": false
+  },
+  "returnToApp": false
+}

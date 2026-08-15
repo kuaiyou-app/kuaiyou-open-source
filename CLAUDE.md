@@ -13,5 +13,5 @@
 
 ### Related pinned stack
 
-- MCP server: Node ≥18 (CI matrix 18/20). Do not couple MCP Node floor to a Next major.
+- MCP / `autoace-cli`: Node ≥20 (CI matrix 20/22; `engines` in `autoace-cli/package.json`). Do not couple to a Next major.
 - Primary Node for scripts: `.nvmrc` → 20.
