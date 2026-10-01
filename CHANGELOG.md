@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## [1.0.12] - 2026-10-01
+
 ### Fixed
 
 - MCP stdout 不再混入非 JSON-RPC 内容：移除 dotenv（v17 启动时会向 stdout 打印提示行，并会读取客户端 cwd 下任意 `.env`，可能改写设备地址）。配置只来自 MCP 客户端 env 与 `pair_device` 本机记录。
