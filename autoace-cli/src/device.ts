@@ -214,6 +214,8 @@ let lastPairBody: string | undefined;
 const HEALTH_PATH = "/api/mcp/health";
 /** Skip a repeat health probe for the same baseUrl within this window. */
 const HEALTH_TTL_MS = 3000;
+const HEALTH_RETRIES = 1;
+const HEALTH_RETRY_DELAY_MS = 250;
 let lastHealthOkAt = 0;
 let lastHealthBaseUrl: string | undefined;
 
@@ -432,17 +434,23 @@ export async function ensureDeviceReachable(
     return;
   }
   const url = `${endpoint}${HEALTH_PATH}`;
-  try {
-    await httpGetNoAuth(url, timeoutMs, 64 * 1024);
-    lastHealthBaseUrl = endpoint;
-    lastHealthOkAt = Date.now();
-  } catch (error) {
-    if (isDeviceUnreachable(error)) {
-      markDeviceDisconnected();
-      throw new DeviceDisconnectedError(endpoint, error);
+  let lastError: unknown;
+  // One retry: a single Wi-Fi blip or dropped socket should not force a re-pair,
+  // which also discards the session override.
+  for (let attempt = 0; attempt <= HEALTH_RETRIES; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, HEALTH_RETRY_DELAY_MS));
+    try {
+      await httpGetNoAuth(url, timeoutMs, 64 * 1024);
+      lastHealthBaseUrl = endpoint;
+      lastHealthOkAt = Date.now();
+      return;
+    } catch (error) {
+      if (!isDeviceUnreachable(error)) throw error;
+      lastError = error;
     }
-    throw error;
   }
+  markDeviceDisconnected();
+  throw new DeviceDisconnectedError(endpoint, lastError);
 }
 
 export function sniffImageMime(buffer: Buffer): string {

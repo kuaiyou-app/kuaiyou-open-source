@@ -551,6 +551,105 @@ test("push_reactive_skill accepts the same .json file path as validate_kuaiyou_s
   }
 });
 
+/** Minimal fake device; `importHandler(req, res)` serves POST /api/mcp/import. */
+async function startImportDevice(importHandler) {
+  const hits = [];
+  const server = http.createServer((req, res) => {
+    hits.push(`${req.method} ${req.url} ${req.headers["content-type"] || ""}`);
+    if (req.url === "/api/mcp/pair" || req.url === "/api/mcp/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", paired: true }));
+      return;
+    }
+    if (req.url === "/api/mcp/schema") {
+      res.writeHead(200, { "Content-Type": "application/schema+json" });
+      res.end(JSON.stringify(schemaForAction("notify")));
+      return;
+    }
+    if (req.url === "/api/mcp/import" && req.method === "POST") {
+      req.resume();
+      req.on("end", () => importHandler(req, res));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const probe = new Client({ name: "import-probe", version: "1.0.0" }, { capabilities: {} });
+  await probe.connect(
+    new StdioClientTransport({
+      command: "node",
+      args: [SERVER_ENTRY],
+      env: probeEnv({ KUAIYOU_DEVICE_URL: `http://127.0.0.1:${port}`, KUAIYOU_DEVICE_IP: "" }),
+    })
+  );
+  return {
+    probe,
+    hits,
+    close: async () => {
+      await probe.close();
+      await new Promise((resolve) => server.close(resolve));
+    },
+  };
+}
+
+test("push_reactive_skill reports a device 400 without re-posting as a form", async () => {
+  const device = await startImportDevice((req, res) => {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "goals[0].action.target: unknown selector" }));
+  });
+  try {
+    const res = await device.probe.callTool({
+      name: "push_reactive_skill",
+      arguments: { skillId: "reject-me", skillJson: validSkillJson("reject-me") },
+    });
+    assert.equal(res.isError, true);
+    assert.match(res.content[0].text, /HTTP 400/);
+    assert.match(res.content[0].text, /unknown selector/);
+    const imports = device.hits.filter((h) => h.startsWith("POST /api/mcp/import"));
+    assert.equal(imports.length, 1, imports.join("\n"));
+  } finally {
+    await device.close();
+  }
+});
+
+test("push_reactive_skill falls back to a form post only on HTTP 415", async () => {
+  const device = await startImportDevice((req, res) => {
+    if (req.headers["content-type"]?.startsWith("application/json")) {
+      res.writeHead(415).end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  try {
+    const res = await device.probe.callTool({
+      name: "push_reactive_skill",
+      arguments: { skillId: "legacy-app", skillJson: validSkillJson("legacy-app") },
+    });
+    assert.notEqual(res.isError, true, res.content?.[0]?.text);
+    const imports = device.hits.filter((h) => h.startsWith("POST /api/mcp/import"));
+    assert.equal(imports.length, 2);
+    assert.match(imports[1], /x-www-form-urlencoded/);
+  } finally {
+    await device.close();
+  }
+});
+
+test("push_reactive_skill rejects an oversized .json file path", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "autoace-big-"));
+  const filePath = path.join(tmpDir, "big.json");
+  await fs.writeFile(filePath, `{"pad":"${"x".repeat(1024 * 1024 + 1)}"}`);
+  try {
+    await assert.rejects(
+      client.callTool({ name: "push_reactive_skill", arguments: { skillId: "big", skillJson: filePath } }),
+      /limit is 1048576/
+    );
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64"
