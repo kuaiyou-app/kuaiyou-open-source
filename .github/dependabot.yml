@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /autoace-cli
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(ci)"
