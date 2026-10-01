@@ -11,6 +11,8 @@ export const DEBUG_WAIT_MIN_MS = 1_000;
 export const DEBUG_POLL_INTERVAL_MS = 400;
 export const DEBUG_LOG_LIMIT = 100;
 export const DEBUG_LOG_MAX_CHARS = 4000;
+/** Throttle for notifications/progress while waiting (polls are every 400ms). */
+const PROGRESS_INTERVAL_MS = 2_000;
 
 export const PHONE_CONFIRM_NOTICE =
   "仍须在手机上点确认；本 CLI 不能跳过 App 确认框（当前通道没有「开发者模式免确认」）。正在等待你确认，然后等到技能结束或失败。\n" +
@@ -25,7 +27,23 @@ export type ParsedSkillStatus = {
   raw: unknown;
 };
 
-export type DebugOutcome = "succeeded" | "failed" | "stopped" | "timeout" | "disconnected" | "error";
+export type DebugOutcome =
+  | "succeeded"
+  | "failed"
+  | "stopped"
+  | "timeout"
+  | "disconnected"
+  | "cancelled"
+  | "error";
+
+/**
+ * Hooks from the MCP request: `signal` aborts when the client cancels, and
+ * `onProgress` keeps clients with short tool timeouts from giving up mid-wait.
+ */
+export type WaitControl = {
+  signal?: AbortSignal;
+  onProgress?: (elapsedMs: number, totalMs: number, message: string) => void;
+};
 
 export type DeviceGetResult =
   | { ok: true; text: string }
@@ -214,6 +232,7 @@ export function formatDebugLoopText(opts: {
     stopped: `Skill ${opts.skillId} stopped (no explicit success/fail flag; inspect the log)`,
     timeout: `Timed out after ${Math.round(opts.elapsedMs / 1000)}s waiting for ${opts.skillId} to finish`,
     disconnected: `Lost the device while waiting for ${opts.skillId}`,
+    cancelled: `Stopped waiting for ${opts.skillId}: the client cancelled the request (the skill may still be running on the phone)`,
     error: `Could not wait for ${opts.skillId} to finish`,
   };
   const lines = [outcomeLine[opts.outcome], `Elapsed: ${opts.elapsedMs}ms`];
@@ -259,11 +278,12 @@ export async function waitForSkillTerminal(opts: {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   initialStatusText?: string;
-}): Promise<DebugWaitResult> {
+} & WaitControl): Promise<DebugWaitResult> {
   const pollIntervalMs = opts.pollIntervalMs ?? DEBUG_POLL_INTERVAL_MS;
   const sleep = opts.sleep ?? defaultSleep;
   const now = opts.now ?? Date.now;
   const startedAt = now();
+  let lastProgressAt = Number.NEGATIVE_INFINITY;
   const deadline = startedAt + opts.timeoutMs;
   let seenRunning = false;
   let lastStatusText = opts.initialStatusText ?? "";
@@ -321,6 +341,20 @@ export async function waitForSkillTerminal(opts: {
   }
 
   do {
+    // Cancelled: skip log/screenshot fetches; the client is no longer listening.
+    if (opts.signal?.aborted) {
+      return {
+        outcome: "cancelled",
+        statusText: lastStatusText,
+        logSummary: "(not fetched: request cancelled)",
+        elapsedMs: Math.max(0, now() - startedAt),
+        logs,
+      };
+    }
+    if (opts.onProgress && now() - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+      lastProgressAt = now();
+      opts.onProgress(lastProgressAt - startedAt, opts.timeoutMs, `waiting: ${lastPhase}`);
+    }
     const statusRes = await opts.getStatus();
     if (!statusRes.ok) {
       if (statusRes.disconnected) return finish("disconnected", statusRes.logs);
@@ -361,9 +395,9 @@ export async function startThenWaitForSkill(opts: {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   waitForConfirm?: boolean;
-}): Promise<
+} & WaitControl): Promise<
   | { kind: "waited"; waited: Awaited<ReturnType<typeof waitForSkillTerminal>>; pendingConfirmWaited: boolean; startLogs: string }
-  | { kind: "start-failed"; start: DevicePostResult; pendingConfirmWaited: boolean }
+  | { kind: "start-failed"; start: DevicePostResult; pendingConfirmWaited: boolean; cancelled?: boolean }
 > {
   const pollIntervalMs = opts.pollIntervalMs ?? DEBUG_POLL_INTERVAL_MS;
   const sleep = opts.sleep ?? defaultSleep;
@@ -373,7 +407,26 @@ export async function startThenWaitForSkill(opts: {
   let lastStart: DevicePostResult | undefined;
   let startLogs = "";
 
+  const startedAt = now();
+  let lastProgressAt = Number.NEGATIVE_INFINITY;
   while (now() < deadline) {
+    if (opts.signal?.aborted) {
+      return {
+        kind: "start-failed",
+        start: {
+          ok: false,
+          status: 0,
+          body: "",
+          logs: startLogs + "Request cancelled by the client while waiting for phone confirmation.\n",
+        },
+        pendingConfirmWaited,
+        cancelled: true,
+      };
+    }
+    if (opts.onProgress && pendingConfirmWaited && now() - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+      lastProgressAt = now();
+      opts.onProgress(lastProgressAt - startedAt, opts.timeoutMs, "waiting for phone confirmation");
+    }
     lastStart = await opts.start();
     startLogs += lastStart.logs || "";
     if (lastStart.disconnected) {
@@ -389,6 +442,11 @@ export async function startThenWaitForSkill(opts: {
         sleep,
         now,
         initialStatusText: lastStart.body,
+        signal: opts.signal,
+        onProgress: opts.onProgress
+          ? // Report elapsed from the confirm phase start so progress never goes backwards.
+            (_elapsed, _total, message) => opts.onProgress!(now() - startedAt, opts.timeoutMs, message)
+          : undefined,
       });
       return { kind: "waited", waited, pendingConfirmWaited, startLogs };
     }

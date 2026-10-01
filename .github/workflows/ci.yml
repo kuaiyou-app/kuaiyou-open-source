@@ -35,11 +35,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # `npm test` builds first, so there is no separate build step.
       - name: Test
         run: npm test
-
-      - name: Build
-        run: npm run build
 
       - name: Pack and smoke-test the published tarball
         run: |
@@ -48,6 +46,22 @@ jobs:
           workdir="$(mktemp -d)"
           npm init -y --prefix "$workdir" >/dev/null 2>&1
           npm install --prefix "$workdir" "$PWD/$tarball" >/dev/null 2>&1
+          bin="$workdir/node_modules/autoace-cli/build/index.js"
+          # stdout is the JSON-RPC channel: every line must parse. The SDK client
+          # below tolerates junk lines, so check the raw stream separately. Run
+          # from a dir with a .env so a stray env loader would be caught too.
+          probe="$(mktemp -d)"
+          echo "FOO=1" > "$probe/.env"
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            | (cd "$probe" && node "$bin" 2>/dev/null) > "$probe/stdout.txt"
+          node -e '
+            const lines = require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean);
+            if (lines.length === 0) throw new Error("no stdout from server");
+            for (const line of lines) {
+              try { JSON.parse(line); } catch { throw new Error("non-JSON line on MCP stdout: " + line); }
+            }
+            console.log("stdout is clean JSON-RPC (" + lines.length + " line(s))");
+          ' "$probe/stdout.txt"
           # Drive an MCP initialize + tools/list handshake against the installed CLI.
           node --input-type=module -e '
             import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -60,7 +74,7 @@ jobs:
             if (tools.length < 4) { throw new Error("expected >= 4 tools, got " + tools.length); }
             await client.close();
             console.log("smoke test ok: " + tools.length + " tools");
-          ' "$workdir/node_modules/autoace-cli/build/index.js"
+          ' "$bin"
 
   skills:
     name: Skills

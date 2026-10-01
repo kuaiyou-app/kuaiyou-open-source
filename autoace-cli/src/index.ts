@@ -5,9 +5,11 @@ import {
   ListToolsRequestSchema,
   ErrorCode,
   McpError,
+  type ServerNotification,
+  type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import * as fs from "fs/promises";
-import * as dotenv from "dotenv";
 import { formatLintResult, validateSkillPayload } from "./skill-lint.js";
 import { formatPlanLintResult, validatePlanPayload } from "./plan-lint.js";
 import {
@@ -31,6 +33,7 @@ import {
   startThenWaitForSkill,
   type FailureScreenshot,
   type DebugWaitResult,
+  type WaitControl,
 } from "./skill-debug.js";
 import {
   DeviceDisconnectedError,
@@ -52,7 +55,9 @@ import {
   withDeviceLock,
 } from "./device.js";
 
-dotenv.config();
+// No dotenv: stdout is the JSON-RPC channel, and the MCP client picks our cwd,
+// so loading a stray .env could both corrupt the stream and retarget the device.
+// Configuration comes from the client's env block and the pair_device record.
 
 // skillId / planId are interpolated into device-side paths, so restrict to a
 // conservative charset. This blocks path traversal (../) and shell metacharacters
@@ -60,11 +65,15 @@ dotenv.config();
 const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SKILL_ID_PATTERN = RESOURCE_ID_PATTERN;
 const PLAN_ID_PATTERN = RESOURCE_ID_PATTERN;
+// Skill / plan JSON read from a path argument. Real payloads are tens of KB.
+const MAX_JSON_FILE_BYTES = 1024 * 1024;
 
 type ToolErrorResponse = {
   content: Array<{ type: "text"; text: string }>;
   isError: true;
 };
+
+type RequestExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 const PACKAGE_JSON = require("../package.json") as { name: string; version: string };
 
@@ -542,6 +551,12 @@ async function resolveJsonFileOrContent(input: string, paramName: string): Promi
     if (!stat.isFile()) {
       throw new McpError(ErrorCode.InvalidParams, `${paramName} path is not a file: ${input}`);
     }
+    if (stat.size > MAX_JSON_FILE_BYTES) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `${paramName} file is ${stat.size} bytes; the limit is ${MAX_JSON_FILE_BYTES}`
+      );
+    }
     if (!input.toLowerCase().endsWith(".json")) {
       throw new McpError(ErrorCode.InvalidParams, `File path ${paramName} must end with .json`);
     }
@@ -713,13 +728,48 @@ function skillDebugLoop(
   return { content, isError };
 }
 
+/** Cancellation + progress hooks for the long run/wait tools, from the MCP request. */
+function waitControlFor(extra: RequestExtra): WaitControl {
+  const progressToken = extra._meta?.progressToken;
+  return {
+    signal: extra.signal,
+    onProgress:
+      progressToken === undefined
+        ? undefined
+        : (elapsedMs, totalMs, message) => {
+            void extra
+              .sendNotification({
+                method: "notifications/progress",
+                params: { progressToken, progress: elapsedMs, total: totalMs, message },
+              })
+              .catch(() => undefined);
+          },
+  };
+}
+
+function cancelledResult(skillId: string, logs: string): ToolErrorResponse {
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `Stopped waiting for ${skillId}: the request was cancelled. ` +
+          `The skill may still be running on the phone; use get_skill_status or stop_skill.\n\nLogs:\n${logs}`,
+      },
+    ],
+    isError: true,
+  };
+}
+
 async function runSkillDebugLoop(
   skillId: string,
   timeoutMs: number,
   waitForConfirm: boolean,
+  control: WaitControl,
   extraLogs = ""
 ) {
   const started = await startThenWaitForSkill({
+    ...control,
     start: () => deviceApiPost("/api/mcp/run", { skillId }),
     getStatus: () => deviceApiGet(`/api/mcp/status?skillId=${encodeURIComponent(skillId)}`),
     getLog: (limit) => {
@@ -731,6 +781,9 @@ async function runSkillDebugLoop(
     waitForConfirm,
   });
   if (started.kind === "start-failed") {
+    if (started.cancelled) {
+      return cancelledResult(skillId, `${extraLogs}${started.start.logs}`);
+    }
     if (started.start.disconnected) {
       return deviceDisconnectedFailure(`${extraLogs}${started.start.logs}`);
     }
@@ -755,6 +808,9 @@ async function runSkillDebugLoop(
   if (started.waited.outcome === "disconnected") {
     return deviceDisconnectedFailure(`${extraLogs}${started.waited.logs}`);
   }
+  if (started.waited.outcome === "cancelled") {
+    return cancelledResult(skillId, `${extraLogs}${started.startLogs}${started.waited.logs}`);
+  }
   return skillDebugLoop(
     skillId,
     started.waited,
@@ -763,7 +819,7 @@ async function runSkillDebugLoop(
   );
 }
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   switch (request.params.name) {
     case "get_kuaiyou_schema": {
       const res = await deviceApiGet("/api/mcp/schema");
@@ -996,7 +1052,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           await ensureDevicePaired(baseUrl);
           let response = await httpPostJson(`${baseUrl}/api/mcp/import`, processedJson);
           // Backward-compatible fallback for older App builds that still expect form posts.
-          if (response.status === 415 || response.status === 400) {
+          // Only 415: a 400 is the App rejecting this skill, and re-posting as a form
+          // would replace that reason with an unrelated legacy-route error.
+          if (response.status === 415) {
             const formData = new URLSearchParams();
             formData.append("postData", processedJson);
             response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
@@ -1045,7 +1103,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      return runSkillDebugLoop(skillId, waitTimeoutMs, true, logs);
+      return runSkillDebugLoop(skillId, waitTimeoutMs, true, waitControlFor(extra), logs);
     }
 
     case "observe_screen": {
@@ -1228,7 +1286,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         return { content: [{ type: "text", text: res.body || `Started ${skillId}` }] };
       }
-      return runSkillDebugLoop(skillId, waitTimeoutMs, false);
+      return runSkillDebugLoop(skillId, waitTimeoutMs, false, waitControlFor(extra));
     }
 
     case "stop_skill": {

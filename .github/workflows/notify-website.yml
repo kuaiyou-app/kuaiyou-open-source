@@ -1,8 +1,10 @@
 name: Notify Website Skills Update
 
-# Website: https://github.com/kuaiyou-app/kuaiyou-website
-# Set secret WEBSITE_DISPATCH_TOKEN (PAT with repo scope) to auto-rebuild the site
-# when skills change. Website also refreshes skills on its own pushes / schedule.
+# Website: https://github.com/kuaiyou-app/kuaiyou-app.github.io
+# Optional fast path. Set secret WEBSITE_DISPATCH_TOKEN (fine-grained PAT with
+# Contents: read & write on the website repo) to rebuild the site right after
+# skills change. Without it this job is skipped, and the website still picks up
+# changes on its 12-hourly scheduled deploy.
 
 on:
   push:
@@ -13,19 +15,30 @@ on:
       - "scripts/build-skill-index.js"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN != '' }}
     steps:
+      - name: Skip without dispatch token
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::WEBSITE_DISPATCH_TOKEN not set; website will refresh on its schedule."
+
       - uses: actions/checkout@v7
+        if: env.HAS_TOKEN == 'true'
 
       - name: Build skills index
+        if: env.HAS_TOKEN == 'true'
         run: node scripts/build-skill-index.js
 
       - name: Dispatch website rebuild
-        continue-on-error: true
+        if: env.HAS_TOKEN == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
-          repository: kuaiyou-app/kuaiyou-website
+          repository: kuaiyou-app/kuaiyou-app.github.io
           event-type: skills-updated

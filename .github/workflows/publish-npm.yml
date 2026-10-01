@@ -5,6 +5,11 @@ on:
     types: [published]
   workflow_dispatch: # Allow manual trigger
 
+permissions:
+  contents: read
+  # OIDC for npm Trusted Publishing + provenance; no long-lived NPM_TOKEN.
+  id-token: write
+
 jobs:
   publish-npm:
     runs-on: ubuntu-latest
@@ -19,24 +24,28 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           registry-url: 'https://registry.npmjs.org/'
+
+      # Trusted Publishing needs npm >= 11.5.1.
+      - name: Use npm 11
+        run: npm install -g npm@11.21.0
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build MCP Server
-        run: npm run build
+      - name: Test
+        run: npm test
 
       - name: Publish to NPM
-        # The kuaiyou-app npm account has 2FA enabled, so NPM_TOKEN MUST be an
-        # "Automation" token (Access Tokens -> Generate New Token -> Automation).
-        # A "Publish" token still triggers an EOTP one-time-password prompt and
-        # will fail here. See docs/mcp-ecosystem-tutorial.md for manual release.
+        # Requires a Trusted Publisher on npmjs.com for autoace-cli:
+        #   repo kuaiyou-app/kuaiyou-open-source, workflow publish-npm.yml.
+        # npm then mints a short-lived token from the job's OIDC identity and
+        # attaches a provenance attestation, so the tarball is traceable to
+        # this commit. Do not publish by hand.
         #
-        # Idempotent on purpose: a version may already be on npm from a manual
-        # release, and re-running this job (or cutting the GitHub Release after
-        # the fact) must not fail with EPUBLISHCONFLICT.
+        # Idempotent on purpose: re-running this job (or cutting the GitHub
+        # Release after the fact) must not fail with EPUBLISHCONFLICT.
         run: |
           set -euo pipefail
           name="$(node -p 'require("./package.json").name')"
@@ -45,6 +54,4 @@ jobs:
             echo "$name@$version is already published; skipping."
             exit 0
           fi
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public --provenance

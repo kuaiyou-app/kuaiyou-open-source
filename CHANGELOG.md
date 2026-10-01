@@ -4,6 +4,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- MCP stdout 不再混入非 JSON-RPC 内容：移除 dotenv（v17 启动时会向 stdout 打印提示行，并会读取客户端 cwd 下任意 `.env`，可能改写设备地址）。配置只来自 MCP 客户端 env 与 `pair_device` 本机记录。
+- `push_reactive_skill` 仅在 HTTP 415 时回退表单提交；设备返回 400（技能被拒）时直接报告真实原因，不再二次提交掩盖错误。
+- 单次网络抖动不再被判为断线：健康探测失败会重试一次后才要求重新配对。
+- 移除钉死在易受攻击版本的 `overrides`（fast-uri / hono / ip-address），升级 `@modelcontextprotocol/sdk` 至 1.31，生产依赖 `npm audit` 清零。
+
+### Changed
+
+- `run_skill wait:true` / `push_reactive_skill run:true` 在客户端提供 progressToken 时发送 `notifications/progress` 保活；客户端取消请求后立即停止轮询（技能在手机上可能仍在运行）。
+- `skillJson` / `planJson` 文件路径输入限制 1 MiB。
+- 文档推荐 npx 启动时钉住主版本 `autoace-cli@1`。
+- npm 发布改为 Trusted Publishing（OIDC）+ provenance，不再使用长期 `NPM_TOKEN`。
+
 ## [1.0.11] - 2026-08-15
 
 ### Added

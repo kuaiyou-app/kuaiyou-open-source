@@ -248,6 +248,29 @@ test("ensureDeviceReachable timeout/refused is disconnect, skips pair, and clear
   clearDevicePairingSession();
 });
 
+test("ensureDeviceReachable survives one transient health failure", async () => {
+  clearSessionDeviceOverride();
+  let calls = 0;
+  const server = http.createServer((req, res) => {
+    calls += 1;
+    if (calls === 1) {
+      req.socket.destroy();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+  });
+  await listen(server);
+  const { port } = server.address();
+  try {
+    await ensureDeviceReachable(`http://127.0.0.1:${port}`, 1000);
+    assert.equal(calls, 2);
+  } finally {
+    await closeServer(server);
+    clearSessionDeviceOverride();
+  }
+});
+
 test("ensureDeviceReachable hanging health is disconnect and does not follow up with pair", async () => {
   clearSessionDeviceOverride();
   const hits = [];
@@ -261,7 +284,8 @@ test("ensureDeviceReachable hanging health is disconnect and does not follow up 
       () => ensureDeviceReachable(`http://127.0.0.1:${port}`, 80),
       (err) => err instanceof DeviceDisconnectedError
     );
-    assert.deepEqual(hits, ["/api/mcp/health"]);
+    // One retry before giving up, and still no follow-up pair call.
+    assert.deepEqual(hits, ["/api/mcp/health", "/api/mcp/health"]);
   } finally {
     await closeServer(server);
     clearSessionDeviceOverride();
