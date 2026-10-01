@@ -37,7 +37,7 @@ env:
   KUAIYOU_MCP_PAIRING_CODE: "482917"
 ```
 
-也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。env 可省略，首次把 App 复制文案交给 `pair_device` 即可。
+也可用 `command: npx` + `args: ["-y","autoace-cli@1"]`（钉住主版本，避免每次启动静默拉取新的大版本）。env 可省略，首次把 App 复制文案交给 `pair_device` 即可。
 
 如果客户端提供 TLS 地址，可改用 `KUAIYOU_DEVICE_URL=https://host:port`。当前仅提供 IP 的客户端仍通过兼容的局域网 HTTP 通道连接；此时应使用可信、隔离的网络，因为配对码和屏幕数据不会获得传输层加密保护。
 

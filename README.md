@@ -28,7 +28,7 @@
 - 📱 **手机本地执行** — 技能在快游大师里跑，不依赖云端模型一直在线；导入/运行须你在手机上确认。
 - 🌐 **适配多种 Agent** — Cursor、Claude Code、Codex 等支持 [Agent Skills](https://agentskills.io) / MCP 的客户端即可。
 
-Android 客户端（无障碍执行引擎）为闭源，请在应用商店搜索 **「快游大师」**。开源官网：https://kuaiyou-app.github.io/ （源码：[`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)）。
+Android 客户端（无障碍执行引擎）为闭源，请在应用商店搜索 **「快游大师」**。开源官网：https://kuaiyou-app.github.io/ （源码：[`kuaiyou-app.github.io`](https://github.com/kuaiyou-app/kuaiyou-app.github.io)）。
 
 ---
 
@@ -66,7 +66,7 @@ env:
   KUAIYOU_MCP_PAIRING_CODE: "<PAIRING_CODE>"
 ```
 
-也可用 `command: npx` + `args: ["-y","autoace-cli@latest"]`。不要只在普通终端前台跑 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启 MCP 都会变。
+也可用 `command: npx` + `args: ["-y","autoace-cli@1"]`（钉住主版本，避免每次启动静默拉取新的大版本）。不要只在普通终端前台跑 stdio server，也不要把配对码提交到 Git。端口与配对码每次开启 MCP 都会变。
 
 ---
 
@@ -106,7 +106,7 @@ env:
 - **反馈 Bug** — [提 Issue](https://github.com/kuaiyou-app/kuaiyou-open-source/issues) 并附上复现步骤。
 - **提需求** — 对新技能或 MCP 能力有想法，欢迎 Feature Request。
 - **提交 PR** — 社区技能请按 [CONTRIBUTING.md](./CONTRIBUTING.md)；不要提交头条回归 / 无限刷视频。
-- **官网** — [`kuaiyou-website`](https://github.com/kuaiyou-app/kuaiyou-website)
+- **官网** — [`kuaiyou-app.github.io`](https://github.com/kuaiyou-app/kuaiyou-app.github.io)
 
 ---
 

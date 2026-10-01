@@ -141,6 +141,75 @@ test("startThenWaitForSkill retries confirm failures then waits", async () => {
   assert.equal(starts, 2);
 });
 
+test("waitForSkillTerminal stops polling when the request is cancelled", async () => {
+  const controller = new AbortController();
+  let polls = 0;
+  let logFetches = 0;
+  const result = await waitForSkillTerminal({
+    getStatus: async () => {
+      polls += 1;
+      if (polls === 2) controller.abort();
+      return { ok: true, text: JSON.stringify({ running: true }) };
+    },
+    getLog: async () => {
+      logFetches += 1;
+      return { ok: true, text: "" };
+    },
+    timeoutMs: 60_000,
+    pollIntervalMs: 0,
+    sleep: async () => {},
+    signal: controller.signal,
+  });
+  assert.equal(result.outcome, "cancelled");
+  assert.equal(polls, 2);
+  assert.equal(logFetches, 0);
+});
+
+test("startThenWaitForSkill honours cancel while waiting for phone confirmation", async () => {
+  const controller = new AbortController();
+  let starts = 0;
+  const result = await startThenWaitForSkill({
+    start: async () => {
+      starts += 1;
+      if (starts === 3) controller.abort();
+      return { ok: false, status: 409, body: "pendingConfirm", logs: "" };
+    },
+    getStatus: async () => ({ ok: true, text: "{}" }),
+    getLog: async () => ({ ok: true, text: "" }),
+    timeoutMs: 60_000,
+    pollIntervalMs: 0,
+    sleep: async () => {},
+    waitForConfirm: true,
+    signal: controller.signal,
+  });
+  assert.equal(result.kind, "start-failed");
+  assert.equal(result.cancelled, true);
+  assert.equal(starts, 3);
+});
+
+test("waitForSkillTerminal reports throttled progress while running", async () => {
+  let now = 0;
+  const progress = [];
+  const result = await waitForSkillTerminal({
+    getStatus: async () => ({ ok: true, text: JSON.stringify({ running: true }) }),
+    getLog: async () => ({ ok: true, text: "" }),
+    timeoutMs: 10_000,
+    pollIntervalMs: 400,
+    sleep: async (ms) => {
+      now += ms;
+    },
+    now: () => now,
+    onProgress: (elapsedMs, totalMs, message) => progress.push({ elapsedMs, totalMs, message }),
+  });
+  assert.equal(result.outcome, "timeout");
+  // 10s of 400ms polls, throttled to one notification per 2s.
+  assert.ok(progress.length >= 4 && progress.length <= 6, `got ${progress.length}`);
+  assert.ok(progress.every((p) => p.totalMs === 10_000));
+  for (let i = 1; i < progress.length; i++) {
+    assert.ok(progress[i].elapsedMs > progress[i - 1].elapsedMs);
+  }
+});
+
 test("formatDebugLoopText is honest about phone confirmation", () => {
   const text = formatDebugLoopText({
     skillId: "open_wechat",
